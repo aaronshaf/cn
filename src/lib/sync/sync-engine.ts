@@ -37,10 +37,23 @@ export interface SyncDiff {
   deleted: SyncChange[];
 }
 
+/**
+ * Progress reporter for sync operations
+ */
+export interface SyncProgressReporter {
+  onFetchStart?: () => void;
+  onFetchComplete?: (pageCount: number, folderCount: number) => void;
+  onDiffComplete?: (added: number, modified: number, deleted: number) => void;
+  onPageStart?: (index: number, total: number, title: string, type: 'added' | 'modified' | 'deleted') => void;
+  onPageComplete?: (index: number, total: number, title: string, localPath: string) => void;
+  onPageError?: (title: string, error: string) => void;
+}
+
 export interface SyncOptions {
   dryRun?: boolean;
   force?: boolean;
   depth?: number;
+  progress?: SyncProgressReporter;
 }
 
 export interface SyncResult {
@@ -257,6 +270,7 @@ export class SyncEngine {
       warnings: [],
       errors: [],
     };
+    const progress = options.progress;
 
     try {
       // Read existing config
@@ -266,7 +280,9 @@ export class SyncEngine {
       }
 
       // Fetch all pages and folders (per ADR-0018)
+      progress?.onFetchStart?.();
       const { pages: remotePages, folders } = await this.client.getAllContentInSpace(config.spaceId);
+      progress?.onFetchComplete?.(remotePages.length, folders.length);
 
       // Build combined content map for parent lookup (includes both pages and folders)
       const contentMap = new Map<string, ContentItem>();
@@ -292,6 +308,7 @@ export class SyncEngine {
         : this.computeDiff(remotePages, config);
 
       result.changes = diff;
+      progress?.onDiffComplete?.(diff.added.length, diff.modified.length, diff.deleted.length);
 
       // If dry run, return without applying changes
       if (options.dryRun) {
@@ -304,8 +321,14 @@ export class SyncEngine {
         existingPaths.add(pageInfo.localPath);
       }
 
+      // Calculate total changes for progress
+      const totalChanges = diff.added.length + diff.modified.length + diff.deleted.length;
+      let currentChange = 0;
+
       // Process added pages
       for (const change of diff.added) {
+        currentChange++;
+        progress?.onPageStart?.(currentChange, totalChanges, change.title, 'added');
         try {
           const page = remotePages.find((p) => p.id === change.pageId);
           if (!page) continue;
@@ -349,14 +372,19 @@ export class SyncEngine {
             localPath,
           };
           config = updatePageSyncInfo(config, syncInfo);
+          progress?.onPageComplete?.(currentChange, totalChanges, change.title, localPath);
         } catch (error) {
-          result.errors.push(`Failed to sync page "${change.title}": ${error}`);
+          const errorMsg = `Failed to sync page "${change.title}": ${error}`;
+          result.errors.push(errorMsg);
           result.success = false;
+          progress?.onPageError?.(change.title, String(error));
         }
       }
 
       // Process modified pages
       for (const change of diff.modified) {
+        currentChange++;
+        progress?.onPageStart?.(currentChange, totalChanges, change.title, 'modified');
         try {
           const page = remotePages.find((p) => p.id === change.pageId);
           if (!page) continue;
@@ -420,14 +448,19 @@ export class SyncEngine {
             localPath: newPath,
           };
           config = updatePageSyncInfo(config, syncInfo);
+          progress?.onPageComplete?.(currentChange, totalChanges, change.title, newPath);
         } catch (error) {
-          result.errors.push(`Failed to update page "${change.title}": ${error}`);
+          const errorMsg = `Failed to update page "${change.title}": ${error}`;
+          result.errors.push(errorMsg);
           result.success = false;
+          progress?.onPageError?.(change.title, String(error));
         }
       }
 
       // Process deleted pages
       for (const change of diff.deleted) {
+        currentChange++;
+        progress?.onPageStart?.(currentChange, totalChanges, change.title, 'deleted');
         try {
           if (change.localPath) {
             // Validate path stays within directory (prevents path traversal)
@@ -453,9 +486,12 @@ export class SyncEngine {
             const { [change.pageId]: _, ...remainingPages } = config.pages;
             config = { ...config, pages: remainingPages };
           }
+          progress?.onPageComplete?.(currentChange, totalChanges, change.title, change.localPath || '');
         } catch (error) {
-          result.errors.push(`Failed to delete page "${change.title}": ${error}`);
+          const errorMsg = `Failed to delete page "${change.title}": ${error}`;
+          result.errors.push(errorMsg);
           result.success = false;
+          progress?.onPageError?.(change.title, String(error));
         }
       }
 

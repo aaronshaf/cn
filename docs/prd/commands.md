@@ -114,6 +114,34 @@ Syncing space: Engineering (ENG)
 ✓ Synced 2 pages, deleted 1
 ```
 
+### Progress Output
+
+Sync command shows detailed progress during execution:
+
+- **Fetching phase**: "Fetching pages from Confluence..." with spinner
+- **Diff phase**: "Comparing with local state..." or show counts (e.g., "Found 5 changes")
+- **Per-page progress**: Show each page as it's downloaded/written
+- **Rate limiting**: Indicate when rate limited and retry countdown
+- **Summary**: Final counts of added/modified/deleted
+
+Example improved output:
+```
+$ cn sync
+Syncing space: Engineering (ENG)
+⠋ Fetching pages from Confluence...
+  Found 42 pages, comparing with local state...
+  3 new, 2 modified, 1 deleted
+
+  [1/6] ↓ getting-started/installation.md (new)
+  [2/6] ↓ getting-started/quick-start.md (new)
+  [3/6] ↓ api-reference/endpoints.md (modified)
+  [4/6] ↓ api-reference/auth.md (modified)
+  [5/6] ↓ getting-started/config.md (new)
+  [6/6] × deprecated/old-page.md (deleted)
+
+✓ Synced 5 pages, deleted 1
+```
+
 ### File Naming
 
 1. Slugify page title: "Getting Started" → "getting-started"

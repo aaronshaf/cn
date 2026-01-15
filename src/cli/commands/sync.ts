@@ -1,10 +1,54 @@
 import chalk from 'chalk';
-import ora from 'ora';
+import ora, { type Ora } from 'ora';
 import { ConfigManager } from '../../lib/config.js';
 import { EXIT_CODES } from '../../lib/errors.js';
 import { getFormatter } from '../../lib/formatters.js';
-import { hasSpaceConfig } from '../../lib/space-config.js';
-import { SyncEngine } from '../../lib/sync/index.js';
+import { readSpaceConfig, hasSpaceConfig } from '../../lib/space-config.js';
+import { SyncEngine, type SyncProgressReporter } from '../../lib/sync/index.js';
+
+/**
+ * Create a progress reporter for sync operations
+ */
+function createProgressReporter(spinner: Ora): SyncProgressReporter {
+  return {
+    onFetchStart: () => {
+      spinner.text = 'Fetching pages from Confluence...';
+    },
+    onFetchComplete: (pageCount, folderCount) => {
+      const folderText = folderCount > 0 ? ` and ${folderCount} folders` : '';
+      spinner.text = `Found ${pageCount} pages${folderText}, comparing with local state...`;
+    },
+    onDiffComplete: (added, modified, deleted) => {
+      const total = added + modified + deleted;
+      if (total === 0) {
+        spinner.succeed('Already up to date');
+      } else {
+        spinner.stop();
+        const parts = [];
+        if (added > 0) parts.push(chalk.green(`${added} new`));
+        if (modified > 0) parts.push(chalk.yellow(`${modified} modified`));
+        if (deleted > 0) parts.push(chalk.red(`${deleted} deleted`));
+        console.log(`  ${parts.join(', ')}`);
+        console.log('');
+      }
+    },
+    onPageStart: (index, total, title, type) => {
+      const icon = type === 'added' ? chalk.green('↓') : type === 'modified' ? chalk.yellow('↓') : chalk.red('×');
+      const label = type === 'added' ? 'new' : type === 'modified' ? 'modified' : 'deleted';
+      process.stdout.write(`  [${index}/${total}] ${icon} ${title} (${label})...`);
+    },
+    onPageComplete: (_index, _total, _title, localPath) => {
+      // Clear line and show completed path
+      process.stdout.write(`\r\x1b[K`);
+      const icon = localPath ? chalk.green('✓') : chalk.red('×');
+      console.log(`  ${icon} ${localPath || 'deleted'}`);
+    },
+    onPageError: (title, error) => {
+      process.stdout.write(`\r\x1b[K`);
+      console.log(`  ${chalk.red('✗')} ${title}: ${error}`);
+    },
+  };
+}
 
 export interface SyncCommandOptions {
   init?: string;
@@ -63,21 +107,30 @@ export async function syncCommand(options: SyncCommandOptions): Promise<void> {
     process.exit(EXIT_CODES.CONFIG_ERROR);
   }
 
+  // Get space info for display
+  const spaceConfig = readSpaceConfig(directory);
+  if (spaceConfig) {
+    console.log(chalk.bold(`Syncing space: ${spaceConfig.spaceName} (${spaceConfig.spaceKey})`));
+  }
+
   // Perform sync
-  const spinner = ora(options.dryRun ? 'Checking for changes...' : 'Syncing...').start();
+  const spinner = ora(options.dryRun ? 'Checking for changes...' : 'Fetching pages...').start();
+  const progressReporter = options.dryRun ? undefined : createProgressReporter(spinner);
 
   try {
     const result = await syncEngine.sync(directory, {
       dryRun: options.dryRun,
       force: options.force,
       depth: options.depth,
+      progress: progressReporter,
     });
 
-    spinner.stop();
-
-    // Show diff
-    console.log('');
-    console.log(formatter.formatSyncDiff(result.changes));
+    // For dry run, stop spinner and show diff
+    if (options.dryRun) {
+      spinner.stop();
+      console.log('');
+      console.log(formatter.formatSyncDiff(result.changes));
+    }
 
     // Show warnings
     if (result.warnings.length > 0) {
@@ -110,8 +163,16 @@ export async function syncCommand(options: SyncCommandOptions): Promise<void> {
       console.error(chalk.red('Sync completed with errors.'));
       process.exit(EXIT_CODES.GENERAL_ERROR);
     } else {
-      console.log('');
-      console.log(chalk.green('Sync complete!'));
+      const { added, modified, deleted } = result.changes;
+      const total = added.length + modified.length + deleted.length;
+      if (total > 0) {
+        console.log('');
+        const parts = [];
+        if (added.length > 0) parts.push(`${added.length} added`);
+        if (modified.length > 0) parts.push(`${modified.length} modified`);
+        if (deleted.length > 0) parts.push(`${deleted.length} deleted`);
+        console.log(chalk.green(`✓ Sync complete: ${parts.join(', ')}`));
+      }
     }
   } catch (error) {
     spinner.fail('Sync failed');
