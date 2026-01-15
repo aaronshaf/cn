@@ -26,13 +26,15 @@ export const SpaceSchema = Schema.Struct({
   status: Schema.optional(Schema.String),
   homepageId: Schema.optional(Schema.String),
   description: Schema.optional(
-    Schema.Struct({
-      plain: Schema.optional(
-        Schema.Struct({
-          value: Schema.String,
-        }),
-      ),
-    }),
+    Schema.NullOr(
+      Schema.Struct({
+        plain: Schema.optional(
+          Schema.Struct({
+            value: Schema.String,
+          }),
+        ),
+      }),
+    ),
   ),
   _links: Schema.optional(
     Schema.Struct({

@@ -59,6 +59,30 @@ describe('ConfluenceClient', () => {
       expect(response.results[0]).toHaveProperty('key');
       expect(response.results[0]).toHaveProperty('name');
     });
+
+    test('handles spaces with null description', async () => {
+      server.use(
+        http.get('*/wiki/api/v2/spaces', () => {
+          return HttpResponse.json({
+            results: [
+              {
+                id: 'space-null-desc',
+                key: 'NULL',
+                name: 'Space with null description',
+                description: null,
+              },
+            ],
+          });
+        }),
+      );
+
+      const client = new ConfluenceClient(testConfig);
+      const response = await client.getSpaces();
+
+      expect(response.results).toBeArray();
+      expect(response.results[0].key).toBe('NULL');
+      expect(response.results[0].description).toBeNull();
+    });
   });
 
   describe('getSpacesEffect', () => {
