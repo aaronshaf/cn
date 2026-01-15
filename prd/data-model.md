@@ -53,15 +53,6 @@ interface PageSyncInfo {
   lastModified: string    // ISO 8601
   localPath: string       // Relative path from root
   contentHash: string     // MD5 hash of content
-  attachments: AttachmentSyncInfo[]
-}
-
-interface AttachmentSyncInfo {
-  attachmentId: string
-  filename: string
-  localPath: string
-  size: number
-  hash: string
 }
 ```
 
@@ -80,16 +71,7 @@ interface AttachmentSyncInfo {
         "version": 5,
         "lastModified": "2024-01-14T08:00:00Z",
         "localPath": "getting-started/index.md",
-        "contentHash": "a1b2c3d4e5f6",
-        "attachments": [
-          {
-            "attachmentId": "att-xyz-789",
-            "filename": "diagram.png",
-            "localPath": "getting-started/attachments/diagram.png",
-            "size": 45032,
-            "hash": "f6e5d4c3b2a1"
-          }
-        ]
+        "contentHash": "a1b2c3d4e5f6"
       }
     }
   }
@@ -222,27 +204,6 @@ interface ConfluencePage {
 }
 ```
 
-### Attachment (from API)
-
-```typescript
-interface ConfluenceAttachment {
-  id: string
-  status: "current" | "trashed"
-  title: string
-  mediaType: string
-  mediaTypeDescription: string
-  comment: string
-  fileId: string
-  fileSize: number
-  webuiLink: string
-  downloadLink: string
-  version: {
-    number: number
-    createdAt: string
-  }
-}
-```
-
 ---
 
 ## Internal Types
@@ -326,13 +287,10 @@ The counter is appended before the extension. The original (first encountered) p
 
 1. Pages with children become directories with `index.md`
 2. Leaf pages are single `.md` files
-3. Attachments go in `attachments/` subdirectory
 
 ```
 parent-page/
 ├── index.md           # Parent page content
-├── attachments/
-│   └── image.png
 ├── child-page.md      # Leaf child
 └── another-child/     # Child with grandchildren
     ├── index.md

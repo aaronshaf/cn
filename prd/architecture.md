@@ -21,7 +21,6 @@ cn/
 │   │   │   ├── confluence-client-base.ts
 │   │   │   ├── confluence-client-pages.ts
 │   │   │   ├── confluence-client-spaces.ts
-│   │   │   ├── confluence-client-attachments.ts
 │   │   │   └── confluence-client-types.ts
 │   │   ├── sync/
 │   │   │   ├── sync-engine.ts    # Core sync logic
@@ -74,7 +73,6 @@ Modular client for Confluence REST API v2.
 class ConfluenceClient extends ConfluenceClientBase {
   private pagesClient: ConfluenceClientPages
   private spacesClient: ConfluenceClientSpaces
-  private attachmentsClient: ConfluenceClientAttachments
 }
 ```
 
@@ -84,8 +82,6 @@ class ConfluenceClient extends ConfluenceClientBase {
 - `GET /wiki/api/v2/pages` - List pages (with pagination)
 - `GET /wiki/api/v2/pages/{id}` - Get page content
 - `GET /wiki/api/v2/pages/{id}/children` - Get child pages
-- `GET /wiki/api/v2/pages/{id}/attachments` - Get attachments
-- `GET /wiki/api/v2/attachments/{id}/download` - Download attachment
 
 **Authentication:**
 - Basic Auth: `email:apiToken` base64 encoded
@@ -115,7 +111,6 @@ class SyncEngine {
 4. For each changed page:
    - Fetch full content
    - Convert HTML → Markdown
-   - Download attachments
    - Write to filesystem
 5. Update sync state
 
@@ -181,7 +176,7 @@ Manages per-folder `.confluence.json` files.
          ▼                       ▼                        ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   Page Tree     │     │   Frontmatter    │     │ .confluence.json│
-│   Attachments   │     │   + Markdown     │     │   Sync State    │
+│                 │     │   + Markdown     │     │   Sync State    │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
 

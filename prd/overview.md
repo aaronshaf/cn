@@ -9,8 +9,7 @@
 1. **Local mirror of Confluence content** - Sync entire spaces to markdown files with proper hierarchy
 2. **Preserve metadata** - Use frontmatter to store page metadata (IDs, labels, authors, etc.)
 3. **Human-readable filenames** - Slugified page titles as filenames
-4. **Attachment support** - Download attachments alongside markdown files
-5. **Offline access** - Browse Confluence content without network access
+4. **Offline access** - Browse Confluence content without network access
 
 ## Non-Goals (Initial Release)
 
@@ -27,7 +26,6 @@
 | Error handling | Effect library | Type-safe errors, composable operations |
 | Sync direction | One-way (Confluence → local) | Simpler initial implementation |
 | Hierarchy | Nested folders | Natural representation of page tree |
-| Attachments | Download to subfolder | Preserves assets, rewrites URLs in markdown |
 | Credentials | `~/.cn/config.json` | Secure, matches ji pattern |
 | Frontmatter | Comprehensive | Rich metadata for tooling integration |
 | Macros | Strip and warn | Clean markdown, no data loss surprises |
@@ -85,8 +83,6 @@ my-space/
 ├── Home.md                   # Root page
 ├── Getting-Started/
 │   ├── index.md              # "Getting Started" page
-│   ├── attachments/
-│   │   └── diagram.png
 │   └── Installation.md       # Child page
 └── API-Reference/
     ├── index.md
@@ -97,7 +93,6 @@ my-space/
 
 - Successfully sync spaces with 1000+ pages
 - Maintain sync state across incremental updates
-- Handle attachments up to 50MB
 - Complete sync of typical space (100 pages) in < 60 seconds
 
 ## Timeline

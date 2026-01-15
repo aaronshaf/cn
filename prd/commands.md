@@ -67,7 +67,6 @@ cn sync --init <SPACE_KEY>
 --init <key>     Initialize sync for a space (creates .confluence.json)
 --dry-run        Show what would be synced without making changes
 --force          Force full re-sync (ignore local state)
---no-attachments Skip attachment downloads
 --depth <n>      Limit sync depth (default: unlimited)
 ```
 
@@ -110,9 +109,6 @@ Syncing space: Engineering (ENG)
 ├── Home.md
 ├── getting-started/
 │   ├── index.md
-│   ├── attachments/
-│   │   ├── screenshot.png
-│   │   └── diagram.svg
 │   └── installation.md
 └── api-reference/
     ├── index.md

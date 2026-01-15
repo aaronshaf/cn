@@ -21,7 +21,6 @@ Use nested folders where child pages become subdirectories.
 
 - **Natural mapping**: Filesystem hierarchy matches page hierarchy
 - **Navigation**: Easy to browse in file explorers and editors
-- **Attachments**: Each page's attachments stay with the page
 - **IDE support**: Folder structure works well with code editors
 - **Discoverability**: Structure is self-documenting
 
@@ -30,7 +29,6 @@ Use nested folders where child pages become subdirectories.
 ### Positive
 - Intuitive organization
 - Works well with filesystem tools (find, tree, etc.)
-- Each page has its own attachment folder
 - Easy to understand at a glance
 
 ### Negative
@@ -45,8 +43,6 @@ space/
 ├── home.md                    # Root page (no children)
 ├── getting-started/           # Page with children
 │   ├── index.md               # "Getting Started" content
-│   ├── attachments/
-│   │   └── screenshot.png
 │   ├── installation.md        # Leaf child
 │   └── configuration/         # Child with grandchildren
 │       ├── index.md
@@ -60,4 +56,3 @@ space/
 
 1. Leaf pages (no children) → single `.md` file
 2. Pages with children → folder with `index.md`
-3. Attachments → `attachments/` subfolder within page folder
