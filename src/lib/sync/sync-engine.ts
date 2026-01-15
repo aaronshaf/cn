@@ -373,7 +373,7 @@ export class SyncEngine {
           mkdirSync(dirname(fullPath), { recursive: true });
           writeFileSync(fullPath, markdown, 'utf-8');
 
-          // Update sync state
+          // Update sync state and save immediately (for resume support)
           const syncInfo: PageSyncInfo = {
             pageId: page.id,
             version: fullPage.version?.number || 1,
@@ -381,6 +381,7 @@ export class SyncEngine {
             localPath,
           };
           config = updatePageSyncInfo(config, syncInfo);
+          writeSpaceConfig(directory, config);
           progress?.onPageComplete?.(currentChange, totalChanges, change.title, localPath);
         } catch (error) {
           const errorMsg = `Failed to sync page "${change.title}": ${error}`;
@@ -454,7 +455,7 @@ export class SyncEngine {
           mkdirSync(dirname(fullPath), { recursive: true });
           writeFileSync(fullPath, markdown, 'utf-8');
 
-          // Update sync state with new path
+          // Update sync state and save immediately (for resume support)
           const syncInfo: PageSyncInfo = {
             pageId: page.id,
             version: fullPage.version?.number || 1,
@@ -462,6 +463,7 @@ export class SyncEngine {
             localPath: newPath,
           };
           config = updatePageSyncInfo(config, syncInfo);
+          writeSpaceConfig(directory, config);
           progress?.onPageComplete?.(currentChange, totalChanges, change.title, newPath);
         } catch (error) {
           const errorMsg = `Failed to update page "${change.title}": ${error}`;
@@ -501,9 +503,10 @@ export class SyncEngine {
               }
             }
 
-            // Remove from sync state
+            // Remove from sync state and save immediately (for resume support)
             const { [change.pageId]: _, ...remainingPages } = config.pages;
             config = { ...config, pages: remainingPages };
+            writeSpaceConfig(directory, config);
           }
           progress?.onPageComplete?.(currentChange, totalChanges, change.title, change.localPath || '');
         } catch (error) {

@@ -124,7 +124,8 @@ export async function syncCommand(options: SyncCommandOptions): Promise<void> {
     console.log(chalk.yellow('Sync interrupted.'));
     process.exit(130);
   };
-  process.once('SIGINT', sigintHandler);
+  process.on('SIGINT', sigintHandler);
+  process.on('SIGTERM', sigintHandler);
 
   try {
     const result = await syncEngine.sync(directory, {
@@ -134,8 +135,9 @@ export async function syncCommand(options: SyncCommandOptions): Promise<void> {
       progress: progressReporter,
     });
 
-    // Clean up signal handler
+    // Clean up signal handlers
     process.off('SIGINT', sigintHandler);
+    process.off('SIGTERM', sigintHandler);
 
     // For dry run, stop spinner and show diff
     if (options.dryRun) {
