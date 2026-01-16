@@ -337,16 +337,20 @@ export class SyncEngine {
             forcePageIds.add(pageRef);
           }
           // Check if it's a local path
-          else if (pathToPageId.has(pageRef)) {
-            forcePageIds.add(pathToPageId.get(pageRef)!);
-          }
-          // Try normalizing the path (remove leading ./)
           else {
-            const normalizedPath = pageRef.replace(/^\.\//, '');
-            if (pathToPageId.has(normalizedPath)) {
-              forcePageIds.add(pathToPageId.get(normalizedPath)!);
-            } else {
-              result.warnings.push(`Could not find page for: ${pageRef}`);
+            const pageId = pathToPageId.get(pageRef);
+            if (pageId !== undefined) {
+              forcePageIds.add(pageId);
+            }
+            // Try normalizing the path (remove leading ./)
+            else {
+              const normalizedPath = pageRef.replace(/^\.\//, '');
+              const normalizedPageId = pathToPageId.get(normalizedPath);
+              if (normalizedPageId !== undefined) {
+                forcePageIds.add(normalizedPageId);
+              } else {
+                result.warnings.push(`Could not find page for: ${pageRef}`);
+              }
             }
           }
         }

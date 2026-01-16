@@ -326,6 +326,22 @@ describe('HtmlConverter', () => {
     expect(html).not.toContain('**[ger]'); // Should not contain raw markdown
   });
 
+  test('converts italic and strikethrough', () => {
+    const converter = new HtmlConverter();
+    const { html } = converter.convert('Text with *italic* and ~~strikethrough~~ formatting.');
+
+    expect(html).toContain('<em>italic</em>');
+    expect(html).toContain('<del>strikethrough</del>');
+  });
+
+  test('converts line breaks and horizontal rules', () => {
+    const converter = new HtmlConverter();
+    const { html } = converter.convert('Line 1  \nLine 2\n\n---\n\nLine 3');
+
+    expect(html).toContain('<br />');
+    expect(html).toContain('<hr />');
+  });
+
   test('converts links', () => {
     const converter = new HtmlConverter();
     const { html } = converter.convert('[Example](https://example.com)');
