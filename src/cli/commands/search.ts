@@ -7,6 +7,7 @@ import ora from 'ora';
 import { EXIT_CODES, MeilisearchConnectionError, MeilisearchIndexError } from '../../lib/errors.js';
 import {
   DEFAULT_MEILISEARCH_URL,
+  formatRelativeTime,
   getIndexName,
   scanDirectory,
   SearchClient,
@@ -56,6 +57,28 @@ export interface SearchCommandOptions {
   json?: boolean;
   /** Output as XML */
   xml?: boolean;
+
+  // Date filters - absolute
+  /** Documents created after this date (YYYY-MM-DD) */
+  createdAfter?: string;
+  /** Documents created before this date (YYYY-MM-DD) */
+  createdBefore?: string;
+  /** Documents updated after this date (YYYY-MM-DD) */
+  updatedAfter?: string;
+  /** Documents updated before this date (YYYY-MM-DD) */
+  updatedBefore?: string;
+
+  // Date filters - relative
+  /** Documents created within duration (e.g., 30d, 2w) */
+  createdWithin?: string;
+  /** Documents updated within duration (e.g., 7d, 2w) */
+  updatedWithin?: string;
+  /** Documents NOT updated within duration (e.g., 90d, 6m) */
+  stale?: string;
+
+  // Sorting
+  /** Sort field (created_at, updated_at, or prefix with - for desc) */
+  sort?: string;
 }
 
 /**
@@ -87,6 +110,11 @@ function formatResultsHuman(response: SearchResponse): string {
   for (const result of response.results) {
     lines.push(chalk.cyan.bold(`${result.rank}. ${result.document.title}`));
     lines.push(chalk.gray(`   ${result.document.local_path}`));
+    if (result.document.updated_at) {
+      const date = new Date(result.document.updated_at * 1000);
+      const relative = formatRelativeTime(result.document.updated_at);
+      lines.push(chalk.gray(`   Updated: ${date.toLocaleDateString()} ${date.toLocaleTimeString()} (${relative})`));
+    }
     if (result.snippet) {
       lines.push(`   ${result.snippet}`);
     }
@@ -94,6 +122,44 @@ function formatResultsHuman(response: SearchResponse): string {
   }
 
   lines.push(chalk.gray(`Search completed in ${response.processingTimeMs}ms`));
+
+  // Show active filters
+  if (response.filters) {
+    const filterParts: string[] = [];
+    if (response.filters.labels && response.filters.labels.length > 0) {
+      filterParts.push(`labels: ${response.filters.labels.join(', ')}`);
+    }
+    if (response.filters.author) {
+      filterParts.push(`author: ${response.filters.author}`);
+    }
+    if (response.filters.createdAfter) {
+      filterParts.push(`created after ${response.filters.createdAfter}`);
+    }
+    if (response.filters.createdBefore) {
+      filterParts.push(`created before ${response.filters.createdBefore}`);
+    }
+    if (response.filters.updatedAfter) {
+      filterParts.push(`updated after ${response.filters.updatedAfter}`);
+    }
+    if (response.filters.updatedBefore) {
+      filterParts.push(`updated before ${response.filters.updatedBefore}`);
+    }
+    if (response.filters.createdWithin) {
+      filterParts.push(`created within ${response.filters.createdWithin}`);
+    }
+    if (response.filters.updatedWithin) {
+      filterParts.push(`updated within ${response.filters.updatedWithin}`);
+    }
+    if (response.filters.stale) {
+      filterParts.push(`stale: not updated in ${response.filters.stale}`);
+    }
+    if (response.filters.sort) {
+      filterParts.push(`sorted by ${response.filters.sort}`);
+    }
+    if (filterParts.length > 0) {
+      lines.push(chalk.gray(`Filters: ${filterParts.join(', ')}`));
+    }
+  }
 
   return lines.join('\n');
 }
@@ -107,6 +173,7 @@ function formatResultsJson(response: SearchResponse): string {
       query: response.query,
       totalHits: response.totalHits,
       processingTimeMs: response.processingTimeMs,
+      filters: response.filters || null,
       results: response.results.map((r) => ({
         rank: r.rank,
         title: r.document.title,
@@ -115,6 +182,8 @@ function formatResultsJson(response: SearchResponse): string {
         labels: r.document.labels,
         snippet: r.snippet,
         url: r.document.url,
+        created_at: r.document.created_at,
+        updated_at: r.document.updated_at,
       })),
     },
     null,
@@ -130,11 +199,55 @@ function formatResultsXml(response: SearchResponse): string {
 
   lines.push(`<search-results query="${escapeXml(response.query)}" count="${response.totalHits}">`);
 
+  // Include filters metadata
+  if (response.filters) {
+    lines.push('  <filters>');
+    if (response.filters.labels && response.filters.labels.length > 0) {
+      for (const label of response.filters.labels) {
+        lines.push(`    <label>${escapeXml(label)}</label>`);
+      }
+    }
+    if (response.filters.author) {
+      lines.push(`    <author>${escapeXml(response.filters.author)}</author>`);
+    }
+    if (response.filters.createdAfter) {
+      lines.push(`    <created_after>${escapeXml(response.filters.createdAfter)}</created_after>`);
+    }
+    if (response.filters.createdBefore) {
+      lines.push(`    <created_before>${escapeXml(response.filters.createdBefore)}</created_before>`);
+    }
+    if (response.filters.updatedAfter) {
+      lines.push(`    <updated_after>${escapeXml(response.filters.updatedAfter)}</updated_after>`);
+    }
+    if (response.filters.updatedBefore) {
+      lines.push(`    <updated_before>${escapeXml(response.filters.updatedBefore)}</updated_before>`);
+    }
+    if (response.filters.createdWithin) {
+      lines.push(`    <created_within>${escapeXml(response.filters.createdWithin)}</created_within>`);
+    }
+    if (response.filters.updatedWithin) {
+      lines.push(`    <updated_within>${escapeXml(response.filters.updatedWithin)}</updated_within>`);
+    }
+    if (response.filters.stale) {
+      lines.push(`    <stale>${escapeXml(response.filters.stale)}</stale>`);
+    }
+    if (response.filters.sort) {
+      lines.push(`    <sort>${escapeXml(response.filters.sort)}</sort>`);
+    }
+    lines.push('  </filters>');
+  }
+
   for (const result of response.results) {
     lines.push(`  <result rank="${result.rank}">`);
     lines.push(`    <title>${escapeXml(result.document.title)}</title>`);
     lines.push(`    <path>${escapeXml(result.document.local_path)}</path>`);
     lines.push(`    <page_id>${escapeXml(result.document.id)}</page_id>`);
+    if (result.document.created_at !== null) {
+      lines.push(`    <created_at>${result.document.created_at}</created_at>`);
+    }
+    if (result.document.updated_at !== null) {
+      lines.push(`    <updated_at>${result.document.updated_at}</updated_at>`);
+    }
     if (result.document.labels.length > 0) {
       lines.push('    <labels>');
       for (const label of result.document.labels) {
@@ -260,6 +373,14 @@ async function executeSearch(
     labels: options.labels,
     author: options.author,
     limit: options.limit || 10,
+    createdAfter: options.createdAfter,
+    createdBefore: options.createdBefore,
+    updatedAfter: options.updatedAfter,
+    updatedBefore: options.updatedBefore,
+    createdWithin: options.createdWithin,
+    updatedWithin: options.updatedWithin,
+    stale: options.stale,
+    sort: options.sort,
   };
 
   const response = await client.search(indexName, query, searchOptions);

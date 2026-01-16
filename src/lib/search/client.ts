@@ -4,10 +4,12 @@
 
 import { MeiliSearch, type Index } from 'meilisearch';
 import { MeilisearchConnectionError, MeilisearchIndexError } from '../errors.js';
+import { parseDate, parseDuration, validateDateFilters } from './date-utils.js';
 import {
   DEFAULT_MEILISEARCH_URL,
   type IndexStatus,
   type SearchDocument,
+  type SearchFilters,
   type SearchOptions,
   type SearchResponse,
   type SearchResult,
@@ -23,11 +25,131 @@ function escapeFilterValue(value: string): string {
 
 /**
  * Truncate content to create a snippet
+ * Collapses multiple whitespace characters into single spaces
  */
 function truncateSnippet(content: string | undefined, maxLength = 150): string {
   if (!content) return '';
-  if (content.length <= maxLength) return content;
-  return `${content.substring(0, maxLength)}...`;
+
+  // Collapse multiple whitespace characters (spaces, newlines, tabs) into single spaces
+  const normalized = content.replace(/\s+/g, ' ').trim();
+
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.substring(0, maxLength)}...`;
+}
+
+/**
+ * Build date filter strings from search options
+ */
+function buildDateFilters(options: SearchOptions): string[] {
+  const filters: string[] = [];
+  const now = Math.floor(Date.now() / 1000);
+
+  // Validate conflicting filters
+  validateDateFilters(options);
+
+  // Absolute filters
+  if (options.createdAfter) {
+    const timestamp = parseDate(options.createdAfter);
+    filters.push(`created_at >= ${timestamp}`);
+  }
+  if (options.createdBefore) {
+    const timestamp = parseDate(options.createdBefore);
+    filters.push(`created_at <= ${timestamp}`);
+  }
+  if (options.updatedAfter) {
+    const timestamp = parseDate(options.updatedAfter);
+    filters.push(`updated_at >= ${timestamp}`);
+  }
+  if (options.updatedBefore) {
+    const timestamp = parseDate(options.updatedBefore);
+    filters.push(`updated_at <= ${timestamp}`);
+  }
+
+  // Relative filters
+  if (options.createdWithin) {
+    const seconds = parseDuration(options.createdWithin);
+    const cutoff = now - seconds;
+    filters.push(`created_at >= ${cutoff}`);
+  }
+  if (options.updatedWithin) {
+    const seconds = parseDuration(options.updatedWithin);
+    const cutoff = now - seconds;
+    filters.push(`updated_at >= ${cutoff}`);
+  }
+  if (options.stale) {
+    const seconds = parseDuration(options.stale);
+    const cutoff = now - seconds;
+    filters.push(`updated_at <= ${cutoff}`);
+  }
+
+  return filters;
+}
+
+/**
+ * Build sort parameter from search options
+ */
+function buildSortParameter(sort?: string): string[] | undefined {
+  if (!sort) return undefined;
+
+  const descending = sort.startsWith('-');
+  const field = descending ? sort.substring(1) : sort;
+
+  if (field !== 'created_at' && field !== 'updated_at') {
+    throw new Error(`Invalid sort field: ${field}. Use created_at or updated_at`);
+  }
+
+  return [`${field}:${descending ? 'desc' : 'asc'}`];
+}
+
+/**
+ * Extract active filters from options for response metadata
+ */
+function extractActiveFilters(options: SearchOptions): SearchFilters | undefined {
+  const filters: SearchFilters = {};
+  let hasFilters = false;
+
+  if (options.labels && options.labels.length > 0) {
+    filters.labels = options.labels;
+    hasFilters = true;
+  }
+  if (options.author) {
+    filters.author = options.author;
+    hasFilters = true;
+  }
+  if (options.createdAfter) {
+    filters.createdAfter = options.createdAfter;
+    hasFilters = true;
+  }
+  if (options.createdBefore) {
+    filters.createdBefore = options.createdBefore;
+    hasFilters = true;
+  }
+  if (options.updatedAfter) {
+    filters.updatedAfter = options.updatedAfter;
+    hasFilters = true;
+  }
+  if (options.updatedBefore) {
+    filters.updatedBefore = options.updatedBefore;
+    hasFilters = true;
+  }
+  if (options.createdWithin) {
+    filters.createdWithin = options.createdWithin;
+    hasFilters = true;
+  }
+  if (options.updatedWithin) {
+    filters.updatedWithin = options.updatedWithin;
+    hasFilters = true;
+  }
+  if (options.stale) {
+    filters.stale = options.stale;
+    hasFilters = true;
+  }
+  if (options.sort) {
+    filters.sort = options.sort;
+    hasFilters = true;
+  }
+
+  return hasFilters ? filters : undefined;
 }
 
 /**
@@ -186,9 +308,17 @@ export class SearchClient {
         filters.push(`author_email = "${escapeFilterValue(options.author)}"`);
       }
 
+      // Add date filters
+      const dateFilters = buildDateFilters(options);
+      filters.push(...dateFilters);
+
+      // Build sort parameter
+      const sort = buildSortParameter(options.sort);
+
       const searchResult = await index.search(query, {
         limit: options.limit || 10,
         filter: filters.length > 0 ? filters.join(' AND ') : undefined,
+        sort,
         attributesToHighlight: ['title', 'content'],
         highlightPreTag: '**',
         highlightPostTag: '**',
@@ -226,6 +356,7 @@ export class SearchClient {
         results,
         totalHits: searchResult.estimatedTotalHits || results.length,
         processingTimeMs: searchResult.processingTimeMs || 0,
+        filters: extractActiveFilters(options),
       };
     } catch (error) {
       // Check if index doesn't exist

@@ -39,6 +39,28 @@ export interface SearchOptions {
   author?: string;
   /** Maximum number of results */
   limit?: number;
+
+  // Date filters - absolute
+  /** Documents created after this date (YYYY-MM-DD) */
+  createdAfter?: string;
+  /** Documents created before this date (YYYY-MM-DD) */
+  createdBefore?: string;
+  /** Documents updated after this date (YYYY-MM-DD) */
+  updatedAfter?: string;
+  /** Documents updated before this date (YYYY-MM-DD) */
+  updatedBefore?: string;
+
+  // Date filters - relative
+  /** Documents created within duration (e.g., 30d, 2w) */
+  createdWithin?: string;
+  /** Documents updated within duration (e.g., 7d, 2w) */
+  updatedWithin?: string;
+  /** Documents NOT updated within duration (e.g., 90d, 6m) */
+  stale?: string;
+
+  // Sorting
+  /** Sort field (created_at, updated_at, or prefix with - for desc) */
+  sort?: string;
 }
 
 /**
@@ -54,6 +76,22 @@ export interface SearchResult {
 }
 
 /**
+ * Active filters in search
+ */
+export interface SearchFilters {
+  labels?: string[];
+  author?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  updatedAfter?: string;
+  updatedBefore?: string;
+  createdWithin?: string;
+  updatedWithin?: string;
+  stale?: string;
+  sort?: string;
+}
+
+/**
  * Search response
  */
 export interface SearchResponse {
@@ -61,6 +99,7 @@ export interface SearchResponse {
   results: SearchResult[];
   totalHits: number;
   processingTimeMs: number;
+  filters?: SearchFilters;
 }
 
 /**
@@ -81,7 +120,11 @@ export const DEFAULT_MEILISEARCH_URL = 'http://localhost:7700';
 
 /**
  * Generate index name from space key
+ * Sanitizes to only include alphanumeric characters, hyphens, and underscores
+ * as required by Meilisearch
  */
 export function getIndexName(spaceKey: string): string {
-  return `cn-${spaceKey.toLowerCase()}`;
+  // Replace any character that's not alphanumeric, hyphen, or underscore with underscore
+  const sanitized = spaceKey.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  return `cn-${sanitized}`;
 }

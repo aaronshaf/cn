@@ -93,6 +93,14 @@ cn search <query> [options]
 |--------|-------------|
 | `--labels <label>` | Filter by label (can be repeated) |
 | `--author <email>` | Filter by author email |
+| `--created-after <date>` | Documents created after date (YYYY-MM-DD) |
+| `--created-before <date>` | Documents created before date (YYYY-MM-DD) |
+| `--updated-after <date>` | Documents updated after date (YYYY-MM-DD) |
+| `--updated-before <date>` | Documents updated before date (YYYY-MM-DD) |
+| `--created-within <duration>` | Created within duration (e.g., 30d, 2w, 3m, 1y) |
+| `--updated-within <duration>` | Updated within duration (e.g., 7d, 2w) |
+| `--stale <duration>` | Not updated within duration (e.g., 90d, 6m) |
+| `--sort <field>` | Sort by created_at or updated_at (prefix with - for desc) |
 | `--limit <n>` | Max results (default: 10) |
 | `--json` | Output as JSON |
 | `--xml` | Output as XML |
@@ -117,6 +125,21 @@ cn search "config" --labels api --labels internal
 
 # JSON output for scripting
 cn search "error handling" --json
+
+# Date filtering - documents updated in last 30 days
+cn search "api" --updated-within 30d
+
+# Date filtering - stale documentation
+cn search "" --stale 90d --labels documentation
+
+# Absolute date range - content from 2024
+cn search "kubernetes" --created-after 2024-01-01 --created-before 2024-12-31
+
+# Sort by most recently updated
+cn search "security" --sort -updated_at --limit 10
+
+# Find oldest content
+cn search "" --sort created_at --limit 20
 ```
 
 **Output:**
