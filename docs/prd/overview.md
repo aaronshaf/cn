@@ -38,7 +38,8 @@
 | Command | Description |
 |---------|-------------|
 | `cn setup` | Interactive configuration wizard |
-| `cn sync` | Sync Confluence space to local folder |
+| `cn clone` | Clone Confluence space to new directory |
+| `cn pull` | Pull changes from Confluence |
 | `cn status` | Check connection and sync status |
 | `cn tree` | Display space hierarchy as tree |
 | `cn open [page]` | Open page in browser |
@@ -56,23 +57,30 @@ $ cn setup
 ✓ Connection verified
 ```
 
-### Initialize a Sync Folder
+### Clone a Space
 
 ```
-$ mkdir my-space && cd my-space
-$ cn sync --init SPACEKEY
-? Space key: ENGINEERING
-✓ Created .confluence.json
-✓ Synced 42 pages
+$ cn clone ENG
+✓ Cloned space "Engineering" (ENG) into ENG
+
+  cd ENG
+  cn pull
 ```
 
-### Subsequent Syncs
+### Pull Pages
 
 ```
-$ cn sync
+$ cn pull
 ✓ 3 pages updated
 ✓ 1 page added
 ✓ 0 pages removed
+```
+
+### Resync Specific Pages
+
+```
+$ cn pull --page ./docs/my-page.md
+✓ 1 page updated
 ```
 
 ## File Structure

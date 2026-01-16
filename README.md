@@ -14,14 +14,12 @@ bun install -g @aaronshaf/cn
 # 1. Configure your Confluence credentials
 cn setup
 
-# 2. Create a directory for the space
-mkdir my-space && cd my-space
+# 2. Clone a Confluence space
+cn clone <SPACE_KEY>
 
-# 3. Initialize the space
-cn sync --init <SPACE_KEY>
-
-# 4. Download the pages
-cn sync
+# 3. Pull the pages
+cd <SPACE_KEY>
+cn pull
 ```
 
 The space key is the identifier in your Confluence URL:
@@ -32,8 +30,14 @@ Credentials are stored in `~/.cn/config.json`. Space configuration is saved to `
 ## Usage
 
 ```bash
-# Sync a space to current directory
-cn sync
+# Clone a space to a new directory
+cn clone DOCS
+
+# Pull changes from Confluence
+cn pull
+
+# Pull specific pages only
+cn pull --page ./path/to/page.md
 
 # Check connection status
 cn status
