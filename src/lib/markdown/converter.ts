@@ -261,7 +261,10 @@ export class MarkdownConverter {
       .replace(/<ac:rich-text-body>/gi, '<div>')
       .replace(/<\/ac:rich-text-body>/gi, '</div>')
       .replace(/<ac:plain-text-body>/gi, '<pre>')
-      .replace(/<\/ac:plain-text-body>/gi, '</pre>');
+      .replace(/<\/ac:plain-text-body>/gi, '</pre>')
+      // Convert Confluence user references to @mentions
+      .replace(/<ac:link><ri:user[^>]*ri:account-id="([^"]*)"[^/]*\/><\/ac:link>/gi, '@$1')
+      .replace(/<ri:user[^>]*ri:account-id="([^"]*)"[^/]*\/>/gi, '@$1');
 
     // Convert using Turndown, with error handling for malformed HTML
     let markdown: string;

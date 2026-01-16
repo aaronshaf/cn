@@ -87,16 +87,23 @@ ${chalk.yellow('Modes:')}
     Re-downloads all pages regardless of local state.
     Use when local state may be corrupted or out of sync.
 
+  ${chalk.cyan('Page-specific pull (--page)')}
+    Force re-download specific pages regardless of version.
+    Useful for re-converting pages after converter improvements.
+
 ${chalk.yellow('Options:')}
   --dry-run                 Show what would be pulled without making changes
   --force                   Full re-pull, ignore local state
+  --page <path-or-id>       Force resync specific page (can use multiple times)
   --depth <n>               Limit depth
   --help                    Show this help message
 
 ${chalk.yellow('Examples:')}
-  cn pull                   Smart pull (only changes)
-  cn pull --dry-run         Preview changes
-  cn pull --force           Full re-pull all pages
+  cn pull                             Smart pull (only changes)
+  cn pull --dry-run                   Preview changes
+  cn pull --force                     Full re-pull all pages
+  cn pull --page ./docs/page.md       Force resync specific file
+  cn pull --page 123456 --page 789    Force resync multiple pages by ID
 `);
 }
 
@@ -280,7 +287,15 @@ async function main(): Promise<void> {
           depth = Number.parseInt(args[depthIndex + 1], 10);
         }
 
-        await pullCommand({ dryRun, force, depth });
+        // Collect all --page arguments (can appear multiple times)
+        const pages: string[] = [];
+        for (let i = 0; i < args.length; i++) {
+          if (args[i] === '--page' && i + 1 < args.length) {
+            pages.push(args[i + 1]);
+          }
+        }
+
+        await pullCommand({ dryRun, force, depth, pages: pages.length > 0 ? pages : undefined });
         break;
       }
 

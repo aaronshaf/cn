@@ -260,4 +260,29 @@ describe('MarkdownConverter', () => {
     expect(markdown).toContain('title: Test Page');
     expect(markdown).toContain('Hello World');
   });
+
+  test('converts Confluence user references to @mentions', () => {
+    const converter = new MarkdownConverter();
+    const html = `
+      <p>Contact <ac:link><ri:user ri:account-id="5f123abc" /></ac:link> for help.</p>
+    `;
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain('@5f123abc');
+    expect(markdown).not.toContain('ac:link');
+    expect(markdown).not.toContain('ri:user');
+  });
+
+  test('converts standalone ri:user elements to @mentions', () => {
+    const converter = new MarkdownConverter();
+    const html = `
+      <table>
+        <tr><td><ri:user ri:account-id="user123" /></td></tr>
+      </table>
+    `;
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain('@user123');
+    expect(markdown).not.toContain('ri:user');
+  });
 });

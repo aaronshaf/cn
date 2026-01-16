@@ -55,6 +55,7 @@ export interface PullCommandOptions {
   dryRun?: boolean;
   force?: boolean;
   depth?: number;
+  pages?: string[]; // Page IDs or local paths to force resync
 }
 
 interface CleanupContext {
@@ -159,6 +160,7 @@ export async function pullCommand(options: PullCommandOptions): Promise<void> {
     const result = await syncEngine.sync(directory, {
       dryRun: options.dryRun,
       force: options.force,
+      forcePages: options.pages,
       depth: options.depth,
       progress: progressReporter,
       signal,

@@ -109,9 +109,10 @@ cn pull [options]
 ### Options
 
 ```
---dry-run        Show what would be pulled without making changes
---force          Full re-pull (re-download all pages)
---depth <n>      Limit pull depth (default: unlimited)
+--dry-run             Show what would be pulled without making changes
+--force               Full re-pull (re-download all pages)
+--page <path-or-id>   Force resync specific page (can use multiple times)
+--depth <n>           Limit pull depth (default: unlimited)
 ```
 
 ### Pull Modes
@@ -125,6 +126,12 @@ cn pull [options]
 - Re-downloads all pages regardless of local state
 - Deletes all existing tracked files first
 - Use when local state may be corrupted
+
+**Page-specific Pull (`--page`):**
+- Force re-download specific pages regardless of version
+- Accepts local file paths or Confluence page IDs
+- Useful for re-converting pages after converter improvements
+- Can specify multiple pages: `--page file1.md --page file2.md`
 
 ### Behavior
 

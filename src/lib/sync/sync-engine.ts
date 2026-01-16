@@ -20,6 +20,7 @@ import {
   type PageSyncInfo,
   type SpaceConfigWithState,
 } from '../space-config.js';
+import { syncSpecificPages } from './sync-specific.js';
 
 /**
  * Sync diff types
@@ -52,6 +53,7 @@ export interface SyncProgressReporter {
 export interface SyncOptions {
   dryRun?: boolean;
   force?: boolean;
+  forcePages?: string[]; // Page IDs or local paths to force resync
   depth?: number;
   progress?: SyncProgressReporter;
   signal?: { cancelled: boolean };
@@ -148,8 +150,9 @@ export class SyncEngine {
 
   /**
    * Compute the diff between remote and local state
+   * @param forcePageIds - Page IDs to force resync regardless of version
    */
-  computeDiff(remotePages: Page[], localConfig: SpaceConfigWithState | null): SyncDiff {
+  computeDiff(remotePages: Page[], localConfig: SpaceConfigWithState | null, forcePageIds?: Set<string>): SyncDiff {
     const diff: SyncDiff = {
       added: [],
       modified: [],
@@ -162,6 +165,7 @@ export class SyncEngine {
     // Find added and modified pages
     for (const page of remotePages) {
       const localPage = localPages[page.id];
+      const isForced = forcePageIds?.has(page.id);
 
       if (!localPage) {
         diff.added.push({
@@ -171,7 +175,8 @@ export class SyncEngine {
         });
       } else {
         const remoteVersion = page.version?.number || 0;
-        if (remoteVersion > localPage.version) {
+        // Include in modified if version changed OR if page is in forcePageIds
+        if (remoteVersion > localPage.version || isForced) {
           diff.modified.push({
             type: 'modified',
             pageId: page.id,
@@ -266,6 +271,11 @@ export class SyncEngine {
    * Sync a space to a local directory
    */
   async sync(directory: string, options: SyncOptions = {}): Promise<SyncResult> {
+    // Fast path: if only specific pages requested (not full force), use optimized method
+    if (options.forcePages && options.forcePages.length > 0 && !options.force) {
+      return syncSpecificPages(this.client, this.converter, this.baseUrl, directory, options.forcePages, options);
+    }
+
     const result: SyncResult = {
       success: true,
       changes: { added: [], modified: [], deleted: [] },
@@ -311,6 +321,37 @@ export class SyncEngine {
         writeSpaceConfig(directory, config);
       }
 
+      // Resolve forcePages to page IDs (can be page IDs or local paths)
+      let forcePageIds: Set<string> | undefined;
+      if (options.forcePages && options.forcePages.length > 0) {
+        forcePageIds = new Set<string>();
+        // Build reverse lookup from localPath to pageId
+        const pathToPageId = new Map<string, string>();
+        for (const [pageId, pageInfo] of Object.entries(config.pages)) {
+          pathToPageId.set(pageInfo.localPath, pageId);
+        }
+
+        for (const pageRef of options.forcePages) {
+          // Check if it's a page ID (exists in remote pages)
+          if (remotePages.some((p) => p.id === pageRef)) {
+            forcePageIds.add(pageRef);
+          }
+          // Check if it's a local path
+          else if (pathToPageId.has(pageRef)) {
+            forcePageIds.add(pathToPageId.get(pageRef)!);
+          }
+          // Try normalizing the path (remove leading ./)
+          else {
+            const normalizedPath = pageRef.replace(/^\.\//, '');
+            if (pathToPageId.has(normalizedPath)) {
+              forcePageIds.add(pathToPageId.get(normalizedPath)!);
+            } else {
+              result.warnings.push(`Could not find page for: ${pageRef}`);
+            }
+          }
+        }
+      }
+
       // Compute diff
       const diff = options.force
         ? {
@@ -318,7 +359,7 @@ export class SyncEngine {
             modified: [],
             deleted: [],
           }
-        : this.computeDiff(remotePages, config);
+        : this.computeDiff(remotePages, config, forcePageIds);
 
       result.changes = diff;
       progress?.onDiffComplete?.(diff.added.length, diff.modified.length, diff.deleted.length);
