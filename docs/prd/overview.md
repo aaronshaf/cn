@@ -16,7 +16,7 @@
 - Real-time sync or file watching
 - Search functionality (rely on local tools like grep, ripgrep)
 - Collaborative editing features
-- Bulk push (pushing multiple changed files at once)
+- Automatic push (no background file watching/auto-push)
 
 ## Design Decisions
 

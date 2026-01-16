@@ -10,7 +10,9 @@ cn/
 │   │   ├── index.ts              # Command router
 │   │   └── commands/
 │   │       ├── setup.ts          # cn setup
-│   │       ├── sync.ts           # cn sync
+│   │       ├── clone.ts          # cn clone
+│   │       ├── pull.ts           # cn pull
+│   │       ├── push.ts           # cn push
 │   │       ├── status.ts         # cn status
 │   │       ├── tree.ts           # cn tree
 │   │       └── open.ts           # cn open
@@ -28,8 +30,10 @@ cn/
 │   │   │   └── conflict-resolver.ts
 │   │   ├── markdown/
 │   │   │   ├── converter.ts      # HTML → Markdown (turndown)
+│   │   │   ├── html-converter.ts # Markdown → HTML (marked)
 │   │   │   ├── frontmatter.ts    # YAML frontmatter handling
 │   │   │   └── slugify.ts        # Title → filename
+│   │   ├── file-scanner.ts       # Detect changed files for push
 │   │   └── space-config.ts       # .confluence.json handling
 │   └── test/
 │       ├── mocks/
@@ -83,6 +87,8 @@ class ConfluenceClient extends ConfluenceClientBase {
 - `GET /wiki/api/v2/pages/{id}` - Get page content
 - `GET /wiki/api/v2/pages/{id}/children` - Get child pages
 - `GET /wiki/api/v2/folders/{id}` - Get folder details (discovered via page parentIds)
+- `POST /wiki/api/v2/pages` - Create new page
+- `PUT /wiki/api/v2/pages/{id}` - Update existing page
 
 **Authentication:**
 - Basic Auth: `email:apiToken` base64 encoded
@@ -119,7 +125,7 @@ class SyncEngine {
 
 ### 4. MarkdownConverter
 
-Convert Confluence storage format to Markdown.
+Convert Confluence storage format to Markdown (pull).
 
 ```typescript
 class MarkdownConverter {
@@ -141,7 +147,44 @@ class MarkdownConverter {
 - Mentions → plain text
 - Macros → stripped with warning
 
-### 5. SpaceConfig
+### 4b. HtmlConverter
+
+Convert Markdown to Confluence storage format (push).
+
+```typescript
+class HtmlConverter {
+  // Convert Markdown to Confluence Storage Format HTML
+  convert(markdown: string): { html: string; warnings: string[] }
+}
+```
+
+**Marked Custom Renderer:**
+- Code blocks → Confluence code macro (`ac:structured-macro`)
+- Blockquotes starting with "Info:", "Note:", "Warning:", "Tip:" → panel macros
+- Tables → Confluence table format
+- Links, bold, italic → standard HTML
+- Warnings for unsupported elements (user mentions, local images, task lists)
+
+### 5. FileScanner
+
+Detect files that need to be pushed.
+
+```typescript
+// Scan for changed files in directory tree
+function detectPushCandidates(directory: string): PushCandidate[]
+
+interface PushCandidate {
+  path: string
+  type: 'new' | 'modified'
+}
+```
+
+**Detection Logic:**
+- New files: markdown files without `page_id` in frontmatter
+- Modified files: file mtime > `synced_at` timestamp in frontmatter
+- Excludes: `node_modules/`, `.git/`, `dist/`, `build/`, etc.
+
+### 6. SpaceConfig
 
 Manages per-folder `.confluence.json` files.
 
@@ -166,6 +209,8 @@ Manages per-folder `.confluence.json` files.
 
 ## Data Flow
 
+### Pull Flow (Confluence → Local)
+
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │  Confluence API │────▶│   SyncEngine     │────▶│  Local Files    │
@@ -174,6 +219,7 @@ Manages per-folder `.confluence.json` files.
          │                       ▼                        │
          │              ┌──────────────────┐              │
          │              │ MarkdownConverter│              │
+         │              │  (turndown)      │              │
          │              └──────────────────┘              │
          │                       │                        │
          ▼                       ▼                        ▼
@@ -181,6 +227,33 @@ Manages per-folder `.confluence.json` files.
 │   Page Tree     │     │   Frontmatter    │     │ .confluence.json│
 │                 │     │   + Markdown     │     │   Sync State    │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
+```
+
+### Push Flow (Local → Confluence)
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Local Files    │────▶│  FileScanner     │────▶│  Push Command   │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+         │                                                │
+         │                                                ▼
+         │                                       ┌──────────────────┐
+         │                                       │  HtmlConverter   │
+         │                                       │    (marked)      │
+         │                                       └──────────────────┘
+         │                                                │
+         ▼                                                ▼
+┌─────────────────┐                              ┌─────────────────┐
+│   Frontmatter   │                              │ Confluence API  │
+│   + Markdown    │                              │  POST/PUT Page  │
+└─────────────────┘                              └─────────────────┘
+         │                                                │
+         ▼                                                ▼
+┌─────────────────┐                              ┌─────────────────┐
+│  Version Check  │                              │ Update Local    │
+│                 │                              │  Frontmatter +  │
+│                 │                              │  .confluence.json│
+└─────────────────┘                              └─────────────────┘
 ```
 
 ## Error Handling
@@ -206,7 +279,8 @@ const syncSpace = (spaceKey: string): Effect<
 **Production:**
 - `effect` - Functional error handling
 - `@effect/schema` - Schema validation
-- `turndown` - HTML to Markdown
+- `turndown` - HTML to Markdown (pull)
+- `marked` - Markdown to HTML (push)
 - `@inquirer/prompts` - Interactive prompts
 - `chalk` - Terminal colors
 - `ora` - Spinners
@@ -227,8 +301,9 @@ const syncSpace = (spaceKey: string): Effect<
    - No credentials in sync state files
 
 2. **API Access:**
-   - Read-only operations only (initial release)
-   - Rate limiting awareness
+   - Bidirectional sync (pull and push)
+   - Version conflict detection prevents accidental overwrites
+   - Rate limiting awareness with exponential backoff
    - Graceful handling of 401/403
 
 3. **File Operations:**

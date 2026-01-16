@@ -39,8 +39,17 @@ cn pull
 # Pull specific pages only
 cn pull --page ./path/to/page.md
 
-# Push local edits back to Confluence
+# Push a single file to Confluence
 cn push ./path/to/page.md
+
+# Push changed files (prompts for each)
+cn push
+
+# Push with dry run (preview without changes)
+cn push --dry-run
+
+# Force push (overwrite remote changes)
+cn push ./path/to/page.md --force
 
 # Check connection status
 cn status

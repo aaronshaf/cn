@@ -52,7 +52,6 @@ interface PageSyncInfo {
   version: number
   lastModified: string    // ISO 8601
   localPath: string       // Relative path from root
-  contentHash: string     // MD5 hash of content
 }
 ```
 
@@ -70,8 +69,7 @@ interface PageSyncInfo {
         "pageId": "page-abc-123",
         "version": 5,
         "lastModified": "2024-01-14T08:00:00Z",
-        "localPath": "getting-started/index.md",
-        "contentHash": "a1b2c3d4e5f6"
+        "localPath": "getting-started/index.md"
       }
     }
   }
