@@ -110,17 +110,19 @@ ${chalk.yellow('Examples:')}
 
 function showPushHelp(): void {
   console.log(`
-${chalk.bold('cn push - Push local markdown file to Confluence')}
+${chalk.bold('cn push - Push local markdown files to Confluence')}
 
 ${chalk.yellow('Usage:')}
-  cn push <file> [options]
+  cn push [file] [options]
 
 ${chalk.yellow('Description:')}
-  Pushes a local markdown file back to Confluence.
-  File must have page_id in frontmatter (synced with cn pull).
+  Push local markdown files to Confluence.
+
+  With a file argument: pushes that single file.
+  Without arguments: scans for changed files and prompts y/n for each.
 
 ${chalk.yellow('Arguments:')}
-  file                      Path to markdown file (required)
+  file                      Path to markdown file (optional)
 
 ${chalk.yellow('Options:')}
   --force                   Ignore version conflicts and overwrite
@@ -128,14 +130,15 @@ ${chalk.yellow('Options:')}
   --help                    Show this help message
 
 ${chalk.yellow('Examples:')}
+  cn push                          Scan and prompt for all changed files
+  cn push --dry-run                Preview what would be pushed
   cn push ./docs/page.md           Push single page
   cn push ./docs/page.md --force   Force push (ignore version conflict)
-  cn push ./docs/page.md --dry-run Preview without pushing
 
 ${chalk.yellow('Notes:')}
+  - New files (no page_id) will be created on Confluence
+  - Modified files are detected by comparing file mtime vs synced_at
   - Only basic markdown elements are fully supported
-  - Confluence macros, mentions, attachments may not convert perfectly
-  - Use 'cn pull --page <file>' first if page was modified remotely
   - Files are automatically renamed to match page titles (except index.md/README.md)
 `);
 }
@@ -339,12 +342,8 @@ async function main(): Promise<void> {
           process.exit(EXIT_CODES.SUCCESS);
         }
 
+        // File is optional - if not provided, scan for changes
         const file = subArgs.find((arg) => !arg.startsWith('--'));
-        if (!file) {
-          console.error(chalk.red('File path is required.'));
-          console.log(chalk.gray('Usage: cn push <file> [options]'));
-          process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-        }
 
         await pushCommand({
           file,

@@ -192,12 +192,12 @@ Pulling space: Engineering (ENG)
 
 ## cn push
 
-Push a local markdown file to Confluence. Creates new pages if `page_id` is missing, updates existing pages otherwise.
+Push local markdown files to Confluence. Creates new pages if `page_id` is missing, updates existing pages otherwise.
 
 ### Usage
 
 ```
-cn push <file> [options]
+cn push [file] [options]
 ```
 
 ### Options
@@ -205,10 +205,25 @@ cn push <file> [options]
 | Option | Description |
 |--------|-------------|
 | `--force` | Ignore version conflicts and overwrite remote changes |
+| `--dry-run` | Show what would be pushed without making changes |
 
 ### Arguments
 
-- `file` - Path to the markdown file to push (required)
+- `file` - Path to the markdown file to push (optional)
+
+### Modes
+
+**Single File Mode** (`cn push <file>`):
+- Pushes the specified file to Confluence
+- Creates new page if no `page_id` in frontmatter
+- Updates existing page if `page_id` is present
+
+**Batch Mode** (`cn push`):
+- Scans all markdown files in directory tree
+- Detects changed files (file mtime > `synced_at`)
+- Detects new files (no `page_id` in frontmatter)
+- Prompts y/n for each file before pushing
+- Excludes: `node_modules/`, `.git/`, `dist/`, `build/`, etc.
 
 ### Flow (Existing Page)
 
@@ -262,6 +277,56 @@ Creating: New Feature
 
 ✓ Created: New Feature (page_id: 789012)
   https://company.atlassian.net/wiki/spaces/ENG/pages/789012/New+Feature
+```
+
+### Output (Batch Mode)
+
+```
+$ cn push
+Scanning for changes...
+
+Found 3 file(s) to push:
+  [N] new-feature.md
+  [M] getting-started.md
+  [M] api-reference/auth.md
+
+? Push new-feature.md? (create) yes
+Creating: new-feature
+  (New page - no page_id in frontmatter)
+  Converting markdown to HTML...
+  Creating page on Confluence...
+
+✓ Created: new-feature (page_id: 789012)
+
+? Push getting-started.md? (update) yes
+Pushing: Getting Started
+  Checking remote version...
+  Converting markdown to HTML...
+  Pushing to Confluence (version 3 → 4)...
+
+✓ Pushed: Getting Started (version 3 → 4)
+
+? Push api-reference/auth.md? (update) no
+
+Push complete:
+  2 pushed
+  1 skipped
+```
+
+### Output (Dry Run)
+
+```
+$ cn push --dry-run
+Scanning for changes...
+
+Found 3 file(s) to push:
+  [N] new-feature.md
+  [M] getting-started.md
+  [M] api-reference/auth.md
+
+--- DRY RUN MODE ---
+Would push 1 new and 2 modified file(s)
+No changes were made (dry run mode)
 ```
 
 ### Version Conflict

@@ -7,10 +7,6 @@ import { Marked, type Tokens, type Renderer } from 'marked';
 export class HtmlConverter {
   private warnings: string[] = [];
 
-  constructor() {
-    // No-op, renderer is set up on each convert call
-  }
-
   /**
    * Escape special XML characters for use in attributes
    * Converts: & < > " ' to their XML entity equivalents
@@ -193,25 +189,51 @@ export class HtmlConverter {
 
       // HTML passthrough - sanitize dangerous elements
       html(this: Renderer, token: Tokens.HTML): string {
-        const html = token.raw;
+        let html = token.raw;
+        let sanitized = false;
 
         // Remove script tags and their content
         const withoutScripts = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        if (withoutScripts !== html) sanitized = true;
+        html = withoutScripts;
+
+        // Remove iframe tags (can load arbitrary content)
+        const withoutIframes = html.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+        if (withoutIframes !== html) sanitized = true;
+        html = withoutIframes;
+
+        // Remove object and embed tags (can execute plugins/ActiveX)
+        const withoutObjects = html
+          .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+          .replace(/<embed\b[^>]*>/gi, '');
+        if (withoutObjects !== html) sanitized = true;
+        html = withoutObjects;
 
         // Remove event handlers (onclick, onerror, etc.)
-        const withoutHandlers = withoutScripts.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+        const withoutHandlers = html.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+        if (withoutHandlers !== html) sanitized = true;
+        html = withoutHandlers;
 
-        // Remove javascript: protocol in hrefs
-        const sanitized = withoutHandlers.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
+        // Remove javascript: protocol in hrefs and srcs
+        const withoutJsProtocol = html
+          .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
+          .replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""');
+        if (withoutJsProtocol !== html) sanitized = true;
+        html = withoutJsProtocol;
+
+        // Remove data: URLs in images (can contain embedded scripts)
+        const withoutDataUrls = html.replace(/src\s*=\s*["']data:[^"']*["']/gi, 'src=""');
+        if (withoutDataUrls !== html) sanitized = true;
+        html = withoutDataUrls;
 
         // Warn if we sanitized anything
-        if (sanitized !== html) {
+        if (sanitized) {
           self.warnings.push(
-            'Potentially unsafe HTML was sanitized (scripts, event handlers, or javascript: URLs removed).',
+            'Potentially unsafe HTML was sanitized (scripts, iframes, event handlers, or dangerous URLs removed).',
           );
         }
 
-        return sanitized;
+        return html;
       },
 
       // Text
@@ -232,7 +254,9 @@ export class HtmlConverter {
    */
   private detectUnsupportedFeatures(markdown: string): void {
     // Check for @mentions (account IDs)
-    if (/@[a-zA-Z0-9]+/.test(markdown)) {
+    // Match @username at word boundaries, but not in email addresses (user@example.com)
+    // Pattern: @ preceded by start-of-line or non-alphanumeric (excludes dots to avoid emails)
+    if (/(?:^|[^a-zA-Z0-9.])@[a-zA-Z0-9_-]+/m.test(markdown)) {
       this.warnings.push('User mentions (@username) will render as plain text. Use Confluence UI to add mentions.');
     }
 

@@ -1,10 +1,12 @@
+import { confirm } from '@inquirer/prompts';
 import chalk from 'chalk';
-import { existsSync, readFileSync, renameSync, writeFileSync, mkdtempSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync, mkdtempSync, unlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { ConfigManager } from '../../lib/config.js';
 import { ConfluenceClient, type CreatePageRequest, type UpdatePageRequest } from '../../lib/confluence-client/index.js';
 import { EXIT_CODES, PageNotFoundError, VersionConflictError } from '../../lib/errors.js';
+import { detectPushCandidates, type PushCandidate } from '../../lib/file-scanner.js';
 import {
   HtmlConverter,
   parseMarkdown,
@@ -21,14 +23,17 @@ import {
 } from '../../lib/space-config.js';
 
 export interface PushCommandOptions {
-  file: string;
+  file?: string;
   force?: boolean;
   dryRun?: boolean;
 }
 
 // Constants
 const INDEX_FILES = ['index.md', 'README.md'] as const;
-const MAX_PAGE_SIZE = 65000; // Confluence has a ~65k character limit
+// Confluence Cloud has a ~65k character limit for page content in Storage Format
+// This is an approximate limit - the actual limit depends on the complexity of the HTML
+// Reference: https://confluence.atlassian.com/doc/confluence-cloud-document-and-restriction-limits-938777919.html
+const MAX_PAGE_SIZE = 65000;
 
 /**
  * Result of file rename operation
@@ -67,7 +72,7 @@ function handleFileRename(
       const newFilePath = join(currentDir, expectedFilename);
 
       if (existsSync(newFilePath)) {
-        console.log(chalk.yellow(`  Warning: Cannot rename to "${expectedFilename}" - file already exists`));
+        console.log(chalk.yellow(`  Note: Keeping filename "${currentFilename}" (${expectedFilename} already exists)`));
         // Atomic rename: temp file -> original file
         renameSync(tempFile, filePath);
         return { finalPath: finalLocalPath, wasRenamed: false };
@@ -77,13 +82,25 @@ function handleFileRename(
       console.log(chalk.cyan(`  Note: File will be renamed to match page title`));
 
       // Atomic operations: remove old file, move temp to new location
-      renameSync(filePath, `${filePath}.bak`);
-      renameSync(tempFile, newFilePath);
-      // Clean up backup
+      const backupPath = `${filePath}.bak`;
+      renameSync(filePath, backupPath);
       try {
-        unlinkSync(`${filePath}.bak`);
-      } catch {
-        // Ignore cleanup errors
+        renameSync(tempFile, newFilePath);
+        // Clean up backup only after successful rename
+        try {
+          unlinkSync(backupPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+      } catch (error) {
+        // Restore from backup if rename fails
+        try {
+          renameSync(backupPath, filePath);
+        } catch {
+          // If restore fails, log the backup location
+          console.error(chalk.red(`  Error: Failed to rename file. Backup available at: ${backupPath}`));
+        }
+        throw error;
       }
 
       const relativeDir = dirname(finalLocalPath);
@@ -95,20 +112,20 @@ function handleFileRename(
     // Atomic rename: temp file -> original file
     renameSync(tempFile, filePath);
     return { finalPath: finalLocalPath, wasRenamed: false };
-  } catch (error) {
-    // Clean up temp file on error
+  } finally {
+    // Always clean up temp directory
     try {
-      unlinkSync(tempFile);
+      rmSync(tempDir, { recursive: true, force: true });
     } catch {
       // Ignore cleanup errors
     }
-    throw error;
   }
 }
 
 /**
- * Push command - pushes a local markdown file to Confluence
- * Creates new pages if page_id is missing, updates existing pages otherwise
+ * Push command - pushes local markdown files to Confluence
+ * When file is specified: pushes single file
+ * When no file: scans for changed files and prompts for each
  */
 export async function pushCommand(options: PushCommandOptions): Promise<void> {
   const configManager = new ConfigManager();
@@ -136,18 +153,51 @@ export async function pushCommand(options: PushCommandOptions): Promise<void> {
   }
   const spaceConfig = spaceConfigResult;
 
+  const client = new ConfluenceClient(config);
+
+  // If no file specified, scan for changes and prompt
+  if (!options.file) {
+    await pushBatch(client, config, spaceConfig, directory, options);
+    return;
+  }
+
+  // Single file push - exit with error code on failure
+  try {
+    await pushSingleFile(client, config, spaceConfig, directory, options.file, options);
+  } catch (error) {
+    if (error instanceof PushError) {
+      process.exit(error.exitCode);
+    }
+    // Unexpected error - log and exit with general error code
+    console.error(chalk.red('Unexpected error:'));
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(EXIT_CODES.GENERAL_ERROR);
+  }
+}
+
+/**
+ * Push a single file to Confluence
+ */
+async function pushSingleFile(
+  client: ConfluenceClient,
+  config: { confluenceUrl: string },
+  spaceConfig: SpaceConfigWithState,
+  directory: string,
+  file: string,
+  options: PushCommandOptions,
+): Promise<void> {
   // Resolve and validate file path
-  const filePath = resolve(directory, options.file);
+  const filePath = resolve(directory, file);
   if (!existsSync(filePath)) {
-    console.error(chalk.red(`File not found: ${options.file}`));
-    process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+    console.error(chalk.red(`File not found: ${file}`));
+    throw new PushError(`File not found: ${file}`, EXIT_CODES.INVALID_ARGUMENTS);
   }
 
   // Validate file extension
   if (!filePath.endsWith('.md')) {
-    console.error(chalk.red(`Invalid file type: ${options.file}`));
+    console.error(chalk.red(`Invalid file type: ${file}`));
     console.log(chalk.gray('Only markdown files (.md) are supported.'));
-    process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+    throw new PushError(`Invalid file type: ${file}`, EXIT_CODES.INVALID_ARGUMENTS);
   }
 
   // Read and parse the markdown file
@@ -158,38 +208,155 @@ export async function pushCommand(options: PushCommandOptions): Promise<void> {
   const currentFilename = basename(filePath, '.md');
   const title = frontmatter.title || currentFilename;
 
-  const client = new ConfluenceClient(config);
+  // Warn if no title in frontmatter for new pages
+  if (!frontmatter.page_id && !frontmatter.title) {
+    console.log(chalk.yellow(`  Note: No title in frontmatter, using filename: "${title}"`));
+  }
 
   // Check if this is a new page (no page_id) or existing page
   if (!frontmatter.page_id) {
-    await createNewPage(client, config, spaceConfig, directory, filePath, options, frontmatter, content, title);
+    await createNewPage(client, config, spaceConfig, directory, filePath, file, options, frontmatter, content, title);
   } else {
-    await updateExistingPage(client, config, spaceConfig, directory, filePath, options, frontmatter, content, title);
+    await updateExistingPage(
+      client,
+      config,
+      spaceConfig,
+      directory,
+      filePath,
+      file,
+      options,
+      frontmatter,
+      content,
+      title,
+    );
   }
 }
 
 /**
- * Handle push errors with consistent messaging
+ * Scan for changed files and push with y/n prompts
+ */
+async function pushBatch(
+  client: ConfluenceClient,
+  config: { confluenceUrl: string },
+  spaceConfig: SpaceConfigWithState,
+  directory: string,
+  options: PushCommandOptions,
+): Promise<void> {
+  console.log(chalk.gray('Scanning for changes...'));
+  console.log('');
+
+  const candidates = detectPushCandidates(directory);
+
+  if (candidates.length === 0) {
+    console.log(chalk.green('No changes to push.'));
+    return;
+  }
+
+  // Show summary
+  const newCount = candidates.filter((c) => c.type === 'new').length;
+  const modifiedCount = candidates.filter((c) => c.type === 'modified').length;
+
+  console.log(`Found ${chalk.bold(candidates.length)} file(s) to push:`);
+  for (const candidate of candidates) {
+    const typeLabel = candidate.type === 'new' ? chalk.cyan('[N]') : chalk.yellow('[M]');
+    console.log(`  ${typeLabel} ${candidate.path}`);
+  }
+  console.log('');
+
+  if (options.dryRun) {
+    console.log(chalk.blue('--- DRY RUN MODE ---'));
+    console.log(chalk.gray(`Would push ${newCount} new and ${modifiedCount} modified file(s)`));
+    console.log(chalk.blue('No changes were made (dry run mode)'));
+    return;
+  }
+
+  // Process each candidate with y/n prompt
+  let pushed = 0;
+  let skipped = 0;
+  let failed = 0;
+  const failedFiles: string[] = [];
+
+  for (const candidate of candidates) {
+    const typeLabel = candidate.type === 'new' ? 'create' : 'update';
+    const shouldPush = await confirm({
+      message: `Push ${candidate.path}? (${typeLabel})`,
+      default: true,
+    });
+
+    if (!shouldPush) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await pushSingleFile(client, config, spaceConfig, directory, candidate.path, {
+        ...options,
+        file: candidate.path,
+      });
+      pushed++;
+    } catch (error) {
+      // Don't exit on individual failures in batch mode
+      // PushError already printed its message, other errors need printing
+      if (!(error instanceof PushError)) {
+        console.error(chalk.red(`  Failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      }
+      failed++;
+      failedFiles.push(candidate.path);
+    }
+
+    console.log('');
+  }
+
+  // Summary
+  console.log(chalk.bold('Push complete:'));
+  if (pushed > 0) console.log(chalk.green(`  ${pushed} pushed`));
+  if (skipped > 0) console.log(chalk.gray(`  ${skipped} skipped`));
+  if (failed > 0) {
+    console.log(chalk.red(`  ${failed} failed`));
+    console.log('');
+    console.log(chalk.gray('Failed files:'));
+    for (const file of failedFiles) {
+      console.log(chalk.gray(`  ${file}`));
+    }
+  }
+}
+
+/**
+ * Error thrown during push operations
+ */
+class PushError extends Error {
+  constructor(
+    message: string,
+    public readonly exitCode: number,
+  ) {
+    super(message);
+    this.name = 'PushError';
+  }
+}
+
+/**
+ * Handle push errors - formats error and throws PushError
  */
 function handlePushError(error: unknown, filePath: string): never {
   if (error instanceof PageNotFoundError) {
     console.error('');
     console.error(chalk.red(`Page not found on Confluence (ID: ${error.pageId}).`));
     console.log(chalk.gray('The page may have been deleted.'));
-    process.exit(EXIT_CODES.PAGE_NOT_FOUND);
+    throw new PushError(`Page not found: ${error.pageId}`, EXIT_CODES.PAGE_NOT_FOUND);
   }
 
   if (error instanceof VersionConflictError) {
     console.error('');
     console.error(chalk.red('Version conflict: remote version has changed.'));
     console.log(chalk.gray(`Run "cn pull --page ${filePath}" to get the latest version.`));
-    process.exit(EXIT_CODES.VERSION_CONFLICT);
+    throw new PushError('Version conflict', EXIT_CODES.VERSION_CONFLICT);
   }
 
   console.error('');
   console.error(chalk.red('Push failed'));
-  console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
-  process.exit(EXIT_CODES.GENERAL_ERROR);
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  console.error(chalk.red(message));
+  throw new PushError(message, EXIT_CODES.GENERAL_ERROR);
 }
 
 /**
@@ -201,6 +368,7 @@ async function createNewPage(
   spaceConfig: SpaceConfigWithState,
   directory: string,
   filePath: string,
+  relativePath: string,
   options: PushCommandOptions,
   frontmatter: Partial<PageFrontmatter>,
   content: string,
@@ -219,7 +387,7 @@ async function createNewPage(
     console.error('');
     console.error(chalk.red(`Content too large: ${html.length} characters (max: ${MAX_PAGE_SIZE})`));
     console.log(chalk.gray('Confluence has a page size limit. Consider splitting into multiple pages.'));
-    process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+    throw new PushError(`Content too large: ${html.length} characters`, EXIT_CODES.INVALID_ARGUMENTS);
   }
 
   // Show conversion warnings
@@ -242,7 +410,7 @@ async function createNewPage(
         console.error('');
         console.error(chalk.red(`Parent page not found (ID: ${frontmatter.parent_id}).`));
         console.log(chalk.gray('Remove parent_id from frontmatter or use a valid page ID.'));
-        process.exit(EXIT_CODES.PAGE_NOT_FOUND);
+        throw new PushError(`Parent page not found: ${frontmatter.parent_id}`, EXIT_CODES.PAGE_NOT_FOUND);
       }
       throw error;
     }
@@ -306,7 +474,7 @@ async function createNewPage(
     const updatedMarkdown = serializeMarkdown(updatedFrontmatter, content);
 
     // Handle file rename if title changed
-    const { finalPath: finalLocalPath } = handleFileRename(filePath, options.file, createdPage.title, updatedMarkdown);
+    const { finalPath: finalLocalPath } = handleFileRename(filePath, relativePath, createdPage.title, updatedMarkdown);
 
     // Update .confluence.json sync state
     let updatedSpaceConfig = readSpaceConfig(directory);
@@ -328,7 +496,7 @@ async function createNewPage(
       console.log(chalk.gray(`  ${config.confluenceUrl}/wiki${webui}`));
     }
   } catch (error) {
-    handlePushError(error, options.file);
+    handlePushError(error, relativePath);
   }
 }
 
@@ -341,12 +509,18 @@ async function updateExistingPage(
   spaceConfig: SpaceConfigWithState,
   directory: string,
   filePath: string,
+  relativePath: string,
   options: PushCommandOptions,
   frontmatter: Partial<PageFrontmatter>,
   content: string,
   title: string,
 ): Promise<void> {
-  const pageId = frontmatter.page_id!;
+  // Verify page_id exists (should be guaranteed by caller)
+  if (!frontmatter.page_id) {
+    throw new Error('updateExistingPage called without page_id');
+  }
+
+  const pageId = frontmatter.page_id;
   const localVersion = frontmatter.version || 1;
 
   console.log(chalk.bold(`Pushing: ${title}`));
@@ -366,9 +540,9 @@ async function updateExistingPage(
       console.error('');
       console.log(chalk.yellow('The page has been modified on Confluence since your last pull.'));
       console.log(chalk.gray('Options:'));
-      console.log(chalk.gray('  - Run "cn pull --page ' + options.file + '" to get the latest version'));
-      console.log(chalk.gray('  - Run "cn push ' + options.file + ' --force" to overwrite remote changes'));
-      process.exit(EXIT_CODES.VERSION_CONFLICT);
+      console.log(chalk.gray(`  - Run "cn pull --page ${relativePath}" to get the latest version`));
+      console.log(chalk.gray(`  - Run "cn push ${relativePath} --force" to overwrite remote changes`));
+      throw new PushError('Version conflict', EXIT_CODES.VERSION_CONFLICT);
     }
 
     // Warn if title differs
@@ -387,7 +561,7 @@ async function updateExistingPage(
       console.error('');
       console.error(chalk.red(`Content too large: ${html.length} characters (max: ${MAX_PAGE_SIZE})`));
       console.log(chalk.gray('Confluence has a page size limit. Consider splitting into multiple pages.'));
-      process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      throw new PushError(`Content too large: ${html.length} characters`, EXIT_CODES.INVALID_ARGUMENTS);
     }
 
     // Show conversion warnings
@@ -452,7 +626,7 @@ async function updateExistingPage(
     const updatedMarkdown = serializeMarkdown(updatedFrontmatter, content);
 
     // Handle file rename if title changed
-    const { finalPath: finalLocalPath } = handleFileRename(filePath, options.file, updatedPage.title, updatedMarkdown);
+    const { finalPath: finalLocalPath } = handleFileRename(filePath, relativePath, updatedPage.title, updatedMarkdown);
 
     // Update .confluence.json sync state
     let updatedSpaceConfig = readSpaceConfig(directory);
@@ -478,6 +652,6 @@ async function updateExistingPage(
       console.log(chalk.gray(`  ${config.confluenceUrl}/wiki${webui}`));
     }
   } catch (error) {
-    handlePushError(error, options.file);
+    handlePushError(error, relativePath);
   }
 }

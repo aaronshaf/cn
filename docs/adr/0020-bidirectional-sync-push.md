@@ -16,7 +16,11 @@ Requirements:
 
 ## Decision
 
-Implement `cn push <file>` command for pushing individual files to Confluence. Supports both updating existing pages and creating new ones.
+Implement `cn push` command for pushing local markdown files to Confluence:
+- `cn push <file>` - Push a single file
+- `cn push` - Scan for changes and prompt y/n for each file
+
+Supports both updating existing pages and creating new ones.
 
 ### Version Conflict Handling
 
@@ -56,6 +60,38 @@ After creation, frontmatter is populated with all metadata:
 - `page_id`, `created_at`, `author_id`, `version`, `url`, etc.
 
 Optional: specify `parent_id` in frontmatter to set parent page.
+
+### Batch Mode
+
+When invoked without a file argument, `cn push` scans for changes:
+
+```bash
+$ cn push
+Scanning for changes...
+
+Found 3 file(s) to push:
+  [N] new-feature.md
+  [M] getting-started.md
+  [M] api-reference/auth.md
+
+? Push new-feature.md? (create) y
+...
+? Push getting-started.md? (update) y
+...
+? Push api-reference/auth.md? (update) n
+
+Push complete:
+  2 pushed
+  1 skipped
+```
+
+**Change Detection:**
+- Compares file modification time (mtime) against `synced_at` in frontmatter
+- Files without `page_id` are detected as new pages
+- Scans all `.md` files, excluding `node_modules/`, `.git/`, `dist/`, `build/`, etc.
+
+**Dry Run Mode:**
+- `cn push --dry-run` shows what would be pushed without making changes
 
 ### Markdown to HTML Conversion
 
@@ -107,12 +143,19 @@ Elements that cannot be converted display warnings:
 - **showdown**: Less active maintenance, fewer TypeScript types
 - **marked**: Lightweight, fast, well-maintained, extensible renderer
 
-### Why individual file push only
+### Why y/n prompts for batch mode
 
-- Safer than bulk push - requires explicit intent
+- Safer than bulk push - requires explicit intent for each file
 - Avoids accidental overwrites of multiple pages
-- Simpler conflict resolution (one file at a time)
-- Future work can add `cn push --all` for bulk operations
+- User maintains full control over what gets pushed
+- Simple flow that doesn't require learning new options
+
+### Why mtime-based change detection
+
+- Simple and fast - no need to hash file contents
+- `synced_at` already stored in frontmatter after pull/push
+- False positives are harmless - user can skip with "n"
+- Matches user intuition about "modified" files
 
 ### Why version-based conflict detection
 
@@ -167,6 +210,7 @@ export async function pushCommand(options: PushCommandOptions): Promise<void> {
 
 - Users can edit pages locally and push changes
 - Create new pages directly from local markdown files
+- Batch mode scans for changes and prompts for each file
 - Version conflicts prevent accidental overwrites
 - Clear warnings for unsupported elements
 - Frontmatter automatically updated after push
@@ -175,10 +219,8 @@ export async function pushCommand(options: PushCommandOptions): Promise<void> {
 
 - Not all markdown features convert perfectly
 - Confluence macros from original page are lost on round-trip
-- Individual file push only (no bulk operations yet)
 
 ## Future Work
 
-- `cn push` (no file) - detect changed files and prompt for each
 - `cn push --all` - push all changed files without prompts
 - Better macro preservation on round-trip

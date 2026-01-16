@@ -74,7 +74,7 @@ export interface SyncResult {
 function assertPathWithinDirectory(baseDir: string, targetPath: string): void {
   const resolvedBase = resolve(baseDir);
   const resolvedTarget = resolve(baseDir, targetPath);
-  if (!resolvedTarget.startsWith(resolvedBase + '/') && resolvedTarget !== resolvedBase) {
+  if (!resolvedTarget.startsWith(`${resolvedBase}/`) && resolvedTarget !== resolvedBase) {
     throw new SyncError(`Path traversal detected: "${targetPath}" escapes base directory`);
   }
 }
