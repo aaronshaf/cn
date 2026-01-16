@@ -1,4 +1,5 @@
 export { MarkdownConverter } from './converter.js';
+export { HtmlConverter } from './html-converter.js';
 export {
   createFrontmatter,
   extractPageId,

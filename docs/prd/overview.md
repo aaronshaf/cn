@@ -11,12 +11,12 @@
 3. **Human-readable filenames** - Slugified page titles as filenames
 4. **Offline access** - Browse Confluence content without network access
 
-## Non-Goals (Initial Release)
+## Non-Goals
 
-- Bidirectional sync (editing local files and pushing back to Confluence) - planned for future
 - Real-time sync or file watching
 - Search functionality (rely on local tools like grep, ripgrep)
 - Collaborative editing features
+- Bulk push (pushing multiple changed files at once)
 
 ## Design Decisions
 
@@ -24,7 +24,7 @@
 |----------|--------|-----------|
 | Language | TypeScript/Bun | Matches ji project, fast runtime |
 | Error handling | Effect library | Type-safe errors, composable operations |
-| Sync direction | One-way (Confluence → local) | Simpler initial implementation |
+| Sync direction | Bidirectional | Pull from Confluence, push individual files back |
 | Hierarchy | Nested folders | Natural representation of page tree |
 | Credentials | `~/.cn/config.json` | Secure, matches ji pattern |
 | Frontmatter | Comprehensive | Rich metadata for tooling integration |
@@ -40,6 +40,7 @@
 | `cn setup` | Interactive configuration wizard |
 | `cn clone` | Clone Confluence space to new directory |
 | `cn pull` | Pull changes from Confluence |
+| `cn push` | Push local file to Confluence |
 | `cn status` | Check connection and sync status |
 | `cn tree` | Display space hierarchy as tree |
 | `cn open [page]` | Open page in browser |
@@ -81,6 +82,19 @@ $ cn pull
 ```
 $ cn pull --page ./docs/my-page.md
 ✓ 1 page updated
+```
+
+### Push Local Changes
+
+```
+$ cn push ./docs/my-page.md
+Pushing: My Page
+  Checking remote version...
+  Converting markdown to HTML...
+  Pushing to Confluence (version 3 → 4)...
+
+✓ Pushed: My Page (version 3 → 4)
+  https://company.atlassian.net/wiki/spaces/ENG/pages/123456/My+Page
 ```
 
 ## File Structure

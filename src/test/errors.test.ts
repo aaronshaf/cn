@@ -10,6 +10,8 @@ import {
   SyncError,
   NetworkError,
   SpaceNotFoundError,
+  PageNotFoundError,
+  VersionConflictError,
   EXIT_CODES,
   getExitCodeForError,
 } from '../lib/errors.js';
@@ -97,6 +99,26 @@ describe('Error types', () => {
       expect(error.message).toBe('Space not found: TEST');
     });
   });
+
+  describe('PageNotFoundError', () => {
+    test('has correct _tag and pageId', () => {
+      const error = new PageNotFoundError('123456');
+      expect(error._tag).toBe('PageNotFoundError');
+      expect(error.pageId).toBe('123456');
+      expect(error.message).toBe('Page not found: 123456');
+    });
+  });
+
+  describe('VersionConflictError', () => {
+    test('has correct _tag and versions', () => {
+      const error = new VersionConflictError(3, 5);
+      expect(error._tag).toBe('VersionConflictError');
+      expect(error.localVersion).toBe(3);
+      expect(error.remoteVersion).toBe(5);
+      expect(error.message).toContain('local version 3');
+      expect(error.message).toContain('remote version 5');
+    });
+  });
 });
 
 describe('EXIT_CODES', () => {
@@ -108,6 +130,8 @@ describe('EXIT_CODES', () => {
     expect(EXIT_CODES.NETWORK_ERROR).toBe(4);
     expect(EXIT_CODES.SPACE_NOT_FOUND).toBe(5);
     expect(EXIT_CODES.INVALID_ARGUMENTS).toBe(6);
+    expect(EXIT_CODES.PAGE_NOT_FOUND).toBe(7);
+    expect(EXIT_CODES.VERSION_CONFLICT).toBe(8);
   });
 });
 
@@ -140,6 +164,16 @@ describe('getExitCodeForError', () => {
   test('returns SPACE_NOT_FOUND for SpaceNotFoundError', () => {
     const error = new SpaceNotFoundError('TEST');
     expect(getExitCodeForError(error)).toBe(EXIT_CODES.SPACE_NOT_FOUND);
+  });
+
+  test('returns PAGE_NOT_FOUND for PageNotFoundError', () => {
+    const error = new PageNotFoundError('123456');
+    expect(getExitCodeForError(error)).toBe(EXIT_CODES.PAGE_NOT_FOUND);
+  });
+
+  test('returns VERSION_CONFLICT for VersionConflictError', () => {
+    const error = new VersionConflictError(3, 5);
+    expect(getExitCodeForError(error)).toBe(EXIT_CODES.VERSION_CONFLICT);
   });
 
   test('returns GENERAL_ERROR for other errors', () => {

@@ -23,3 +23,6 @@ Records of significant architectural decisions with context and rationale. Each 
 | [0015](0015-biome-configuration.md) | Biome linter/formatter settings |
 | [0016](0016-bunfig-toml-configuration.md) | Bun runtime and test config |
 | [0017](0017-dual-async-effect-api.md) | Both async and Effect methods |
+| [0018](0018-confluence-folder-support.md) | V2 API folder discovery for hierarchy |
+| [0019](0019-sync-modes.md) | Smart vs full sync modes |
+| [0020](0020-bidirectional-sync-push.md) | Push command for bidirectional sync |

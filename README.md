@@ -39,6 +39,9 @@ cn pull
 # Pull specific pages only
 cn pull --page ./path/to/page.md
 
+# Push local edits back to Confluence
+cn push ./path/to/page.md
+
 # Check connection status
 cn status
 

@@ -3,6 +3,7 @@ export type {
   Body,
   ContentItem,
   ContentTreeNode,
+  CreatePageRequest,
   Folder,
   Label,
   LabelsResponse,
@@ -11,11 +12,13 @@ export type {
   PageTreeNode,
   Space,
   SpacesResponse,
+  UpdatePageRequest,
   User,
   Version,
 } from './types.js';
 export {
   BodySchema,
+  CreatePageRequestSchema,
   FolderSchema,
   isFolder,
   LabelSchema,
@@ -24,6 +27,7 @@ export {
   PagesResponseSchema,
   SpaceSchema,
   SpacesResponseSchema,
+  UpdatePageRequestSchema,
   UserSchema,
   VersionSchema,
 } from './types.js';

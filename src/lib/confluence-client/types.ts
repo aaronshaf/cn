@@ -171,6 +171,48 @@ export function isFolder(item: ContentItem): item is Folder {
 }
 
 /**
+ * Error response for version conflicts (409)
+ */
+export interface VersionConflictResponse {
+  version?: {
+    number?: number;
+  };
+}
+
+/**
+ * Request body for updating a page
+ */
+export const UpdatePageRequestSchema = Schema.Struct({
+  id: Schema.String,
+  status: Schema.String,
+  title: Schema.String,
+  body: Schema.Struct({
+    representation: Schema.Literal('storage'),
+    value: Schema.String,
+  }),
+  version: Schema.Struct({
+    number: Schema.Number,
+    message: Schema.optional(Schema.String),
+  }),
+});
+export type UpdatePageRequest = Schema.Schema.Type<typeof UpdatePageRequestSchema>;
+
+/**
+ * Request body for creating a new page
+ */
+export const CreatePageRequestSchema = Schema.Struct({
+  spaceId: Schema.String,
+  status: Schema.String,
+  title: Schema.String,
+  parentId: Schema.optional(Schema.String),
+  body: Schema.Struct({
+    representation: Schema.Literal('storage'),
+    value: Schema.String,
+  }),
+});
+export type CreatePageRequest = Schema.Schema.Type<typeof CreatePageRequestSchema>;
+
+/**
  * Page with children tree structure (for building hierarchy)
  */
 export interface PageTreeNode {

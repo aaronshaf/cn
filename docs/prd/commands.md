@@ -190,6 +190,151 @@ Pulling space: Engineering (ENG)
 
 ---
 
+## cn push
+
+Push a local markdown file to Confluence. Creates new pages if `page_id` is missing, updates existing pages otherwise.
+
+### Usage
+
+```
+cn push <file> [options]
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Ignore version conflicts and overwrite remote changes |
+
+### Arguments
+
+- `file` - Path to the markdown file to push (required)
+
+### Flow (Existing Page)
+
+1. Read and parse markdown file
+2. Fetch current remote page version
+3. Compare versions (unless `--force`)
+4. Convert markdown to Confluence Storage Format HTML
+5. Update page via API
+6. Update local frontmatter with new metadata
+7. Rename file if title changed
+8. Update `.confluence.json` sync state
+
+### Flow (New Page)
+
+1. Read and parse markdown file
+2. Detect missing `page_id` in frontmatter
+3. Convert markdown to Confluence Storage Format HTML
+4. Create page via API (uses `spaceId` from `.confluence.json`)
+5. Populate frontmatter with all metadata (`page_id`, `created_at`, `author_id`, etc.)
+6. Rename file to match title slug
+7. Update `.confluence.json` sync state
+
+### Requirements
+
+- Must be in a directory with `.confluence.json`
+- For new pages: optionally specify `parent_id` in frontmatter to set parent page
+- For new pages: title comes from frontmatter `title` field or filename
+
+### Output (Update Existing)
+
+```
+$ cn push ./docs/getting-started.md
+Pushing: Getting Started
+  Checking remote version...
+  Converting markdown to HTML...
+  Pushing to Confluence (version 3 → 4)...
+
+✓ Pushed: Getting Started (version 3 → 4)
+  https://company.atlassian.net/wiki/spaces/ENG/pages/123456/Getting+Started
+```
+
+### Output (Create New)
+
+```
+$ cn push ./docs/new-feature.md
+Creating: New Feature
+  (New page - no page_id in frontmatter)
+  Converting markdown to HTML...
+  Creating page on Confluence...
+  Renamed: new-feature.md → new-feature.md
+
+✓ Created: New Feature (page_id: 789012)
+  https://company.atlassian.net/wiki/spaces/ENG/pages/789012/New+Feature
+```
+
+### Version Conflict
+
+```
+$ cn push ./docs/getting-started.md
+Pushing: Getting Started
+  Checking remote version...
+
+Version conflict detected.
+  Local version:  3
+  Remote version: 5
+
+The page has been modified on Confluence since your last pull.
+Options:
+  - Run "cn pull --page ./docs/getting-started.md" to get the latest version
+  - Run "cn push ./docs/getting-started.md --force" to overwrite remote changes
+```
+
+### Conversion Warnings
+
+```
+$ cn push ./docs/getting-started.md
+Pushing: Getting Started
+  Checking remote version...
+  Converting markdown to HTML...
+
+Conversion warnings:
+  ! User mentions (@username) will render as plain text. Use Confluence UI to add mentions.
+  ! Local image "./screenshot.png" will not display in Confluence. Use absolute URLs.
+
+  Pushing to Confluence (version 3 → 4)...
+
+✓ Pushed: Getting Started (version 3 → 4)
+```
+
+### Supported Markdown
+
+| Element | Support |
+|---------|---------|
+| Headings | Full |
+| Paragraphs | Full |
+| Bold/Italic | Full |
+| Code blocks | Full (converts to Confluence code macro) |
+| Inline code | Full |
+| Lists (ordered/unordered) | Full |
+| Links | Full |
+| Tables | Full |
+| Horizontal rules | Full |
+| Blockquotes | Full (special panels for Info:/Note:/Warning:/Tip:) |
+
+### Unsupported Elements (Warnings)
+
+| Element | Behavior |
+|---------|----------|
+| User mentions (@username) | Rendered as plain text |
+| Local images | Warning, image won't display |
+| Task list checkboxes | Converted to regular list items |
+| Footnotes | Rendered as plain text |
+| Confluence macros | Not preserved from original |
+
+### Errors
+
+| Error | Exit Code | Description |
+|-------|-----------|-------------|
+| Page not found | 7 | Page deleted from Confluence |
+| Version conflict | 8 | Remote version differs (use --force) |
+| Authentication failed | 3 | Invalid credentials |
+| Network error | 4 | Connection failed |
+| No space configured | 2 | Missing `.confluence.json` file |
+
+---
+
 ## cn status
 
 Check connection status and sync information.
@@ -368,6 +513,8 @@ $ cn open 123456
 | 4 | Network error |
 | 5 | Space not found |
 | 6 | Invalid arguments |
+| 7 | Page not found |
+| 8 | Version conflict |
 
 ---
 
@@ -385,7 +532,6 @@ $ cn open 123456
 
 | Command | Description |
 |---------|-------------|
-| `cn push` | Push local changes to Confluence |
 | `cn diff` | Show differences between local and remote |
 | `cn search` | Search pages in synced content |
 | `cn watch` | Watch for remote changes |

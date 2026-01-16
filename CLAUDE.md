@@ -31,7 +31,7 @@ Records of significant architectural decisions with context and rationale:
 | `0004-use-turndown-for-html-to-markdown.md` | Turndown for HTML conversion |
 | `0005-use-nested-folders-for-page-hierarchy.md` | Directory structure mirrors page tree |
 | `0006-use-comprehensive-frontmatter.md` | Rich YAML frontmatter metadata |
-| `0007-one-way-sync-initial-release.md` | Confluence → local sync only (initially) |
+| `0007-one-way-sync-initial-release.md` | Initial one-way sync (superseded by 0020) |
 | `0008-use-msw-for-api-mocking.md` | MSW for HTTP mocking in tests |
 | `0009-git-hooks-for-quality.md` | Pre-commit hooks for code quality |
 | `0010-exponential-backoff-for-rate-limits.md` | Retry strategy for API rate limits |
@@ -44,6 +44,7 @@ Records of significant architectural decisions with context and rationale:
 | `0017-dual-async-effect-api.md` | Both async and Effect methods |
 | `0018-confluence-folder-support.md` | V2 API folder discovery for hierarchy |
 | `0019-sync-modes.md` | Smart vs full sync modes |
+| `0020-bidirectional-sync-push.md` | Push command for bidirectional sync |
 
 ## Style
 
@@ -55,6 +56,7 @@ Records of significant architectural decisions with context and rationale:
 - **Language**: TypeScript
 - **Error Handling**: Effect library
 - **HTML→MD**: turndown
+- **MD→HTML**: marked
 - **Linting**: Biome
 
 ## Commands
@@ -63,6 +65,7 @@ Records of significant architectural decisions with context and rationale:
 cn setup     # Configure Confluence credentials
 cn clone     # Clone a space to a new folder
 cn pull      # Pull changes from Confluence
+cn push      # Push local file to Confluence
 cn status    # Check connection and sync status
 cn tree      # Display page hierarchy
 cn open      # Open page in browser

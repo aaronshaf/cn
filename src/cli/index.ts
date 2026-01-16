@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { EXIT_CODES } from '../lib/errors.js';
 import { cloneCommand } from './commands/clone.js';
 import { openCommand } from './commands/open.js';
+import { pullCommand } from './commands/pull.js';
+import { pushCommand } from './commands/push.js';
 import { setup } from './commands/setup.js';
 import { statusCommand } from './commands/status.js';
-import { pullCommand } from './commands/pull.js';
 import { treeCommand } from './commands/tree.js';
 
 // Get version from package.json
@@ -107,6 +108,38 @@ ${chalk.yellow('Examples:')}
 `);
 }
 
+function showPushHelp(): void {
+  console.log(`
+${chalk.bold('cn push - Push local markdown file to Confluence')}
+
+${chalk.yellow('Usage:')}
+  cn push <file> [options]
+
+${chalk.yellow('Description:')}
+  Pushes a local markdown file back to Confluence.
+  File must have page_id in frontmatter (synced with cn pull).
+
+${chalk.yellow('Arguments:')}
+  file                      Path to markdown file (required)
+
+${chalk.yellow('Options:')}
+  --force                   Ignore version conflicts and overwrite
+  --dry-run                 Preview changes without pushing
+  --help                    Show this help message
+
+${chalk.yellow('Examples:')}
+  cn push ./docs/page.md           Push single page
+  cn push ./docs/page.md --force   Force push (ignore version conflict)
+  cn push ./docs/page.md --dry-run Preview without pushing
+
+${chalk.yellow('Notes:')}
+  - Only basic markdown elements are fully supported
+  - Confluence macros, mentions, attachments may not convert perfectly
+  - Use 'cn pull --page <file>' first if page was modified remotely
+  - Files are automatically renamed to match page titles (except index.md/README.md)
+`);
+}
+
 function showStatusHelp(): void {
   console.log(`
 ${chalk.bold('cn status - Check connection and sync status')}
@@ -190,6 +223,7 @@ ${chalk.yellow('Commands:')}
   cn setup                  Configure Confluence credentials
   cn clone                  Clone a space to a new folder
   cn pull                   Pull space to local folder
+  cn push                   Push local file to Confluence
   cn status                 Check connection and sync status
   cn tree                   Display page hierarchy
   cn open                   Open page in browser
@@ -296,6 +330,27 @@ async function main(): Promise<void> {
         }
 
         await pullCommand({ dryRun, force, depth, pages: pages.length > 0 ? pages : undefined });
+        break;
+      }
+
+      case 'push': {
+        if (args.includes('--help')) {
+          showPushHelp();
+          process.exit(EXIT_CODES.SUCCESS);
+        }
+
+        const file = subArgs.find((arg) => !arg.startsWith('--'));
+        if (!file) {
+          console.error(chalk.red('File path is required.'));
+          console.log(chalk.gray('Usage: cn push <file> [options]'));
+          process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+        }
+
+        await pushCommand({
+          file,
+          force: args.includes('--force'),
+          dryRun: args.includes('--dry-run'),
+        });
         break;
       }
 

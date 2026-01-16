@@ -132,6 +132,36 @@ export class SpaceNotFoundError extends Error {
 }
 
 /**
+ * Page not found errors (404 when updating)
+ */
+export class PageNotFoundError extends Error {
+  readonly _tag = 'PageNotFoundError' as const;
+  readonly pageId: string;
+
+  constructor(pageId: string) {
+    super(`Page not found: ${pageId}`);
+    this.name = 'PageNotFoundError';
+    this.pageId = pageId;
+  }
+}
+
+/**
+ * Version conflict errors (409 when updating with stale version)
+ */
+export class VersionConflictError extends Error {
+  readonly _tag = 'VersionConflictError' as const;
+  readonly localVersion: number;
+  readonly remoteVersion: number;
+
+  constructor(localVersion: number, remoteVersion: number) {
+    super(`Version conflict: local version ${localVersion} does not match remote version ${remoteVersion}`);
+    this.name = 'VersionConflictError';
+    this.localVersion = localVersion;
+    this.remoteVersion = remoteVersion;
+  }
+}
+
+/**
  * Union type of all error types for comprehensive error handling
  */
 export type CnError =
@@ -144,7 +174,9 @@ export type CnError =
   | AuthError
   | SyncError
   | NetworkError
-  | SpaceNotFoundError;
+  | SpaceNotFoundError
+  | PageNotFoundError
+  | VersionConflictError;
 
 /**
  * Exit codes for CLI
@@ -157,6 +189,8 @@ export const EXIT_CODES = {
   NETWORK_ERROR: 4,
   SPACE_NOT_FOUND: 5,
   INVALID_ARGUMENTS: 6,
+  PAGE_NOT_FOUND: 7,
+  VERSION_CONFLICT: 8,
 } as const;
 
 /**
@@ -174,6 +208,10 @@ export function getExitCodeForError(error: CnError): number {
       return EXIT_CODES.NETWORK_ERROR;
     case 'SpaceNotFoundError':
       return EXIT_CODES.SPACE_NOT_FOUND;
+    case 'PageNotFoundError':
+      return EXIT_CODES.PAGE_NOT_FOUND;
+    case 'VersionConflictError':
+      return EXIT_CODES.VERSION_CONFLICT;
     default:
       return EXIT_CODES.GENERAL_ERROR;
   }

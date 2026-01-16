@@ -1,6 +1,14 @@
 import { Effect, pipe, Schedule, Schema } from 'effect';
 import type { Config } from '../config.js';
-import { ApiError, AuthError, NetworkError, RateLimitError, SpaceNotFoundError } from '../errors.js';
+import {
+  ApiError,
+  AuthError,
+  NetworkError,
+  PageNotFoundError,
+  RateLimitError,
+  SpaceNotFoundError,
+  VersionConflictError,
+} from '../errors.js';
 import {
   FolderSchema,
   LabelsResponseSchema,
@@ -8,6 +16,7 @@ import {
   PagesResponseSchema,
   SpaceSchema,
   SpacesResponseSchema,
+  type CreatePageRequest,
   type Folder,
   type Label,
   type LabelsResponse,
@@ -15,6 +24,8 @@ import {
   type PagesResponse,
   type Space,
   type SpacesResponse,
+  type UpdatePageRequest,
+  type VersionConflictResponse,
 } from './types.js';
 
 /**
@@ -272,6 +283,183 @@ export class ConfluenceClient {
    */
   async getPage(pageId: string, includeBody = true): Promise<Page> {
     return Effect.runPromise(this.getPageEffect(pageId, includeBody));
+  }
+
+  /**
+   * Update a page (Effect version)
+   * Uses PUT /wiki/api/v2/pages/{id} endpoint
+   */
+  updatePageEffect(
+    request: UpdatePageRequest,
+  ): Effect.Effect<
+    Page,
+    ApiError | AuthError | NetworkError | RateLimitError | PageNotFoundError | VersionConflictError
+  > {
+    const baseUrl = this.baseUrl;
+    const authHeader = this.authHeader;
+    const url = `${baseUrl}/wiki/api/v2/pages/${request.id}`;
+
+    const makeRequest = Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            Authorization: authHeader,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request),
+        });
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          throw new RateLimitError(
+            'Rate limited by Confluence API',
+            retryAfter ? Number.parseInt(retryAfter, 10) : undefined,
+          );
+        }
+
+        if (response.status === 401) {
+          throw new AuthError('Invalid credentials. Please check your email and API token.', 401);
+        }
+
+        if (response.status === 403) {
+          throw new AuthError('Access denied. Please check your permissions.', 403);
+        }
+
+        if (response.status === 404) {
+          throw new PageNotFoundError(request.id);
+        }
+
+        if (response.status === 409) {
+          // Version conflict - the remote version has changed
+          const errorData: VersionConflictResponse = await response.json().catch(() => ({}));
+          const remoteVersion = errorData?.version?.number ?? 0;
+          throw new VersionConflictError(request.version.number, remoteVersion);
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new ApiError(`API request failed: ${response.status} ${errorText}`, response.status);
+        }
+
+        return response.json();
+      },
+      catch: (error) => {
+        if (
+          error instanceof RateLimitError ||
+          error instanceof AuthError ||
+          error instanceof ApiError ||
+          error instanceof PageNotFoundError ||
+          error instanceof VersionConflictError
+        ) {
+          return error;
+        }
+        return new NetworkError(`Network error: ${error}`);
+      },
+    });
+
+    // Retry schedule with exponential backoff for rate limits only
+    const retrySchedule = Schedule.exponential(BASE_DELAY_MS).pipe(
+      Schedule.jittered,
+      Schedule.whileInput((error: unknown) => error instanceof RateLimitError),
+      Schedule.upTo(MAX_RETRIES * BASE_DELAY_MS * 32),
+    );
+
+    return pipe(
+      makeRequest,
+      Effect.flatMap((data) =>
+        Schema.decodeUnknown(PageSchema)(data).pipe(
+          Effect.mapError((e) => new ApiError(`Invalid response: ${e}`, 500)),
+        ),
+      ),
+      Effect.retry(retrySchedule),
+    );
+  }
+
+  /**
+   * Update a page (async version)
+   */
+  async updatePage(request: UpdatePageRequest): Promise<Page> {
+    return Effect.runPromise(this.updatePageEffect(request));
+  }
+
+  /**
+   * Create a new page (Effect version)
+   */
+  createPageEffect(
+    request: CreatePageRequest,
+  ): Effect.Effect<Page, ApiError | AuthError | NetworkError | RateLimitError> {
+    const baseUrl = this.baseUrl;
+    const authHeader = this.authHeader;
+    const url = `${baseUrl}/wiki/api/v2/pages`;
+
+    const makeRequest = Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: authHeader,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request),
+        });
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          throw new RateLimitError(
+            'Rate limited by Confluence API',
+            retryAfter ? Number.parseInt(retryAfter, 10) : undefined,
+          );
+        }
+
+        if (response.status === 401) {
+          throw new AuthError('Invalid credentials. Please check your email and API token.', 401);
+        }
+
+        if (response.status === 403) {
+          throw new AuthError('Access denied. Please check your permissions.', 403);
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new ApiError(`API request failed: ${response.status} ${errorText}`, response.status);
+        }
+
+        return response.json();
+      },
+      catch: (error) => {
+        if (error instanceof RateLimitError || error instanceof AuthError || error instanceof ApiError) {
+          return error;
+        }
+        return new NetworkError(`Network error: ${error}`);
+      },
+    });
+
+    // Retry schedule with exponential backoff for rate limits only
+    const retrySchedule = Schedule.exponential(BASE_DELAY_MS).pipe(
+      Schedule.jittered,
+      Schedule.whileInput((error: unknown) => error instanceof RateLimitError),
+      Schedule.upTo(MAX_RETRIES * BASE_DELAY_MS * 32),
+    );
+
+    return pipe(
+      makeRequest,
+      Effect.flatMap((data) =>
+        Schema.decodeUnknown(PageSchema)(data).pipe(
+          Effect.mapError((e) => new ApiError(`Invalid response: ${e}`, 500)),
+        ),
+      ),
+      Effect.retry(retrySchedule),
+    );
+  }
+
+  /**
+   * Create a new page (async version)
+   */
+  async createPage(request: CreatePageRequest): Promise<Page> {
+    return Effect.runPromise(this.createPageEffect(request));
   }
 
   /**
