@@ -100,8 +100,9 @@ export interface PushCandidate {
  *
  * Detection logic:
  * - **New files**: have no `page_id` in frontmatter
- * - **Modified files**: have `page_id` and file mtime > `synced_at`
+ * - **Modified files**: have `page_id` and file mtime > `synced_at` + 1 second
  *
+ * The 1-second tolerance accounts for filesystem write timing during pull operations.
  * Files without `synced_at` but with `page_id` are treated as modified.
  *
  * @example
@@ -166,7 +167,11 @@ export function detectPushCandidates(directory: string): PushCandidate[] {
     const syncedAtTime = new Date(syncedAt).getTime();
     const mtimeMs = stat.mtimeMs;
 
-    if (mtimeMs > syncedAtTime) {
+    // Add 1 second tolerance to account for filesystem write timing
+    // during pull operations (file mtime is set slightly after synced_at)
+    const TOLERANCE_MS = 1000;
+
+    if (mtimeMs > syncedAtTime + TOLERANCE_MS) {
       candidates.push({
         path: relativePath,
         type: 'modified',
