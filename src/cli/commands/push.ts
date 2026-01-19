@@ -8,6 +8,7 @@ import { ConfluenceClient, type CreatePageRequest, type UpdatePageRequest } from
 import { EXIT_CODES, PageNotFoundError, VersionConflictError } from '../../lib/errors.js';
 import { detectPushCandidates, type PushCandidate } from '../../lib/file-scanner.js';
 import {
+  buildPageLookupMap,
   HtmlConverter,
   parseMarkdown,
   serializeMarkdown,
@@ -377,10 +378,17 @@ async function createNewPage(
   console.log(chalk.bold(`Creating: ${title}`));
   console.log(chalk.cyan('  (New page - no page_id in frontmatter)'));
 
-  // Convert markdown to HTML
+  // Convert markdown to HTML with link conversion (ADR-0022)
   console.log(chalk.gray('  Converting markdown to HTML...'));
   const converter = new HtmlConverter();
-  const { html, warnings } = converter.convert(content);
+  const pageLookupMap = buildPageLookupMap(spaceConfig);
+  const { html, warnings } = converter.convert(
+    content,
+    directory,
+    relativePath.replace(/^\.\//, ''),
+    spaceConfig.spaceKey,
+    pageLookupMap,
+  );
 
   // Validate content size
   if (html.length > MAX_PAGE_SIZE) {
@@ -551,10 +559,17 @@ async function updateExistingPage(
       console.log(chalk.yellow('  The remote title will be updated to match local.'));
     }
 
-    // Convert markdown to HTML
+    // Convert markdown to HTML with link conversion (ADR-0022)
     console.log(chalk.gray('  Converting markdown to HTML...'));
     const converter = new HtmlConverter();
-    const { html, warnings } = converter.convert(content);
+    const pageLookupMap = buildPageLookupMap(spaceConfig);
+    const { html, warnings } = converter.convert(
+      content,
+      directory,
+      relativePath.replace(/^\.\//, ''),
+      spaceConfig.spaceKey,
+      pageLookupMap,
+    );
 
     // Validate content size
     if (html.length > MAX_PAGE_SIZE) {

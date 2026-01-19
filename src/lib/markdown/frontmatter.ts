@@ -63,8 +63,9 @@ export function createFrontmatter(
 
 /**
  * Serialize frontmatter and content to a markdown string
+ * Accepts Partial frontmatter for flexibility when updating existing files
  */
-export function serializeMarkdown(frontmatter: PageFrontmatter, content: string): string {
+export function serializeMarkdown(frontmatter: Partial<PageFrontmatter>, content: string): string {
   // Filter out undefined values
   const cleanFrontmatter: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(frontmatter)) {

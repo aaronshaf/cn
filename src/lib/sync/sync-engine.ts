@@ -11,7 +11,7 @@ import {
 } from '../confluence-client/index.js';
 import type { Config } from '../config.js';
 import { SyncError } from '../errors.js';
-import { MarkdownConverter, slugify } from '../markdown/index.js';
+import { buildPageLookupMap, MarkdownConverter, slugify, updateReferencesAfterRename } from '../markdown/index.js';
 import {
   createSpaceConfig,
   readSpaceConfig,
@@ -401,6 +401,10 @@ export class SyncEngine {
         existingPaths.add(pageInfo.localPath);
       }
 
+      // Build page lookup map for link conversion (ADR-0022)
+      // Enable duplicate title warnings during sync
+      const pageLookupMap = buildPageLookupMap(config, true);
+
       // Calculate total changes for progress
       const totalChanges = diff.added.length + diff.modified.length + diff.deleted.length;
       let currentChange = 0;
@@ -434,7 +438,11 @@ export class SyncEngine {
           const author = await this.fetchUser(fullPage.authorId);
           const lastModifier = await this.fetchUser(fullPage.version?.authorId);
 
-          // Convert to markdown
+          // Generate local path first (needed for link conversion)
+          const localPath = this.generateLocalPath(page, remotePages, contentMap, existingPaths, homepageId);
+          (change as SyncChange).localPath = localPath;
+
+          // Convert to markdown with link conversion (ADR-0022)
           const { markdown, warnings } = this.converter.convertPage(
             fullPage,
             config.spaceKey,
@@ -443,12 +451,10 @@ export class SyncEngine {
             this.baseUrl,
             author,
             lastModifier,
+            localPath,
+            pageLookupMap,
           );
           result.warnings.push(...warnings.map((w) => `${page.title}: ${w}`));
-
-          // Generate local path
-          const localPath = this.generateLocalPath(page, remotePages, contentMap, existingPaths, homepageId);
-          (change as SyncChange).localPath = localPath;
 
           // Validate path stays within directory (prevents path traversal)
           assertPathWithinDirectory(directory, localPath);
@@ -464,6 +470,7 @@ export class SyncEngine {
             version: fullPage.version?.number || 1,
             lastModified: fullPage.version?.createdAt,
             localPath,
+            title: page.title, // Store title for link conversion (ADR-0022)
           };
           config = updatePageSyncInfo(config, syncInfo);
           writeSpaceConfig(directory, config);
@@ -505,7 +512,13 @@ export class SyncEngine {
           const author = await this.fetchUser(fullPage.authorId);
           const lastModifier = await this.fetchUser(fullPage.version?.authorId);
 
-          // Convert to markdown
+          // Always generate path based on current title/hierarchy
+          // This handles title changes by moving files to new locations
+          const newPath = this.generateLocalPath(page, remotePages, contentMap, existingPaths, homepageId);
+          const oldPath = change.localPath;
+
+          // Convert to markdown with link conversion (ADR-0022)
+          // Use newPath for link conversion since that's where the file will be
           const { markdown, warnings } = this.converter.convertPage(
             fullPage,
             config.spaceKey,
@@ -514,19 +527,25 @@ export class SyncEngine {
             this.baseUrl,
             author,
             lastModifier,
+            newPath,
+            pageLookupMap,
           );
           result.warnings.push(...warnings.map((w) => `${page.title}: ${w}`));
 
-          // Always generate path based on current title/hierarchy
-          // This handles title changes by moving files to new locations
-          const newPath = this.generateLocalPath(page, remotePages, contentMap, existingPaths, homepageId);
-          const oldPath = change.localPath;
-
-          // If path changed (title or parent changed), delete old file
+          // If path changed (title or parent changed), update references and delete old file
           if (oldPath && oldPath !== newPath) {
             assertPathWithinDirectory(directory, oldPath);
             const oldFullPath = join(directory, oldPath);
             if (existsSync(oldFullPath)) {
+              // Update references in other files (ADR-0022)
+              const referenceUpdates = updateReferencesAfterRename(directory, oldPath, newPath);
+              if (referenceUpdates.length > 0) {
+                const details = referenceUpdates
+                  .map((u) => `${u.filePath} (${u.updatedCount} ref${u.updatedCount !== 1 ? 's' : ''})`)
+                  .join(', ');
+                result.warnings.push(`Updated references to renamed page "${page.title}":\n  ${details}`);
+              }
+
               unlinkSync(oldFullPath);
               // Clean up empty parent directories
               let parentDir = dirname(oldFullPath);
@@ -555,6 +574,7 @@ export class SyncEngine {
             version: fullPage.version?.number || 1,
             lastModified: fullPage.version?.createdAt,
             localPath: newPath,
+            title: page.title, // Store title for link conversion (ADR-0022)
           };
           config = updatePageSyncInfo(config, syncInfo);
           writeSpaceConfig(directory, config);

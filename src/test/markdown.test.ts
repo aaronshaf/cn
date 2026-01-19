@@ -3,6 +3,8 @@ import { MarkdownConverter } from '../lib/markdown/converter.js';
 import { HtmlConverter } from '../lib/markdown/html-converter.js';
 import { slugify, generateUniqueFilename } from '../lib/markdown/slugify.js';
 import { createFrontmatter, serializeMarkdown, parseMarkdown, extractPageId } from '../lib/markdown/frontmatter.js';
+import { buildPageLookupMap } from '../lib/markdown/link-converter.js';
+import type { SpaceConfigWithState } from '../lib/space-config.js';
 
 describe('slugify', () => {
   test('converts title to lowercase', () => {
@@ -494,5 +496,182 @@ describe('HtmlConverter', () => {
     expect(html).toContain('Safe HTML');
     // Should not warn
     expect(warnings.some((w) => w.includes('unsafe HTML'))).toBe(false);
+  });
+
+  test('converts relative .md links to Confluence page links', () => {
+    const converter = new HtmlConverter();
+    const pageLookupMap = {
+      titleToPage: new Map(),
+      idToPage: new Map([
+        [
+          'page-123',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'architecture/overview.md',
+            title: 'Architecture Overview',
+          },
+        ],
+      ]),
+      pathToPage: new Map([
+        [
+          'architecture/overview.md',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'architecture/overview.md',
+            title: 'Architecture Overview',
+          },
+        ],
+      ]),
+    };
+
+    const markdown = 'See [Architecture](./architecture/overview.md) for details.';
+    const { html } = converter.convert(markdown, '/test/space', 'home.md', 'TEST', pageLookupMap);
+
+    expect(html).toContain('<ac:link>');
+    expect(html).toContain('ri:page ri:content-title="Architecture Overview"');
+    expect(html).toContain('ri:space-key="TEST"');
+    expect(html).toContain('<ac:plain-text-link-body><![CDATA[Architecture]]></ac:plain-text-link-body>');
+  });
+
+  test('warns about broken local links', () => {
+    const converter = new HtmlConverter();
+    const pageLookupMap = {
+      titleToPage: new Map(),
+      idToPage: new Map(),
+      pathToPage: new Map(),
+    };
+
+    const markdown = 'See [Missing](./non-existent.md).';
+    const { warnings } = converter.convert(markdown, '/test/space', 'home.md', 'TEST', pageLookupMap);
+
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings.some((w) => w.includes('non-existent.md'))).toBe(true);
+  });
+
+  test('preserves external links unchanged', () => {
+    const converter = new HtmlConverter();
+    const pageLookupMap = {
+      titleToPage: new Map(),
+      idToPage: new Map(),
+      pathToPage: new Map(),
+    };
+
+    const markdown = 'See [Google](https://google.com) and [Example](https://example.com/page.md).';
+    const { html } = converter.convert(markdown, '/test/space', 'home.md', 'TEST', pageLookupMap);
+
+    expect(html).toContain('<a href="https://google.com">Google</a>');
+    expect(html).toContain('<a href="https://example.com/page.md">Example</a>');
+    expect(html).not.toContain('<ac:link>');
+  });
+
+  test('properly escapes XML special characters in link titles', () => {
+    const converter = new HtmlConverter();
+    const pageLookupMap = {
+      titleToPage: new Map(),
+      idToPage: new Map([
+        [
+          'page-123',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'special.md',
+            title: 'Page with <Special> & "Chars"',
+          },
+        ],
+      ]),
+      pathToPage: new Map([
+        [
+          'special.md',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'special.md',
+            title: 'Page with <Special> & "Chars"',
+          },
+        ],
+      ]),
+    };
+
+    const markdown = 'See [Special Page](./special.md).';
+    const { html } = converter.convert(markdown, '/test/space', 'home.md', 'TEST', pageLookupMap);
+
+    // Verify XML special characters are properly escaped
+    expect(html).toContain('ri:content-title="Page with &lt;Special&gt; &amp; &quot;Chars&quot;"');
+    expect(html).not.toContain('ri:content-title="Page with <Special> & "Chars""');
+  });
+
+  test('handles links in code blocks without converting them', () => {
+    const converter = new HtmlConverter();
+    const pageLookupMap = {
+      titleToPage: new Map(),
+      idToPage: new Map([
+        [
+          'page-123',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'page.md',
+            title: 'Test Page',
+          },
+        ],
+      ]),
+      pathToPage: new Map([
+        [
+          'page.md',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'page.md',
+            title: 'Test Page',
+          },
+        ],
+      ]),
+    };
+
+    const markdown = '```\n[Link](./page.md)\n```';
+    const { html } = converter.convert(markdown, '/test/space', 'home.md', 'TEST', pageLookupMap);
+
+    // Links inside code blocks should NOT be converted to Confluence links
+    expect(html).not.toContain('<ac:link>');
+    expect(html).toContain('[Link](./page.md)');
+  });
+
+  test('handles inline code with link-like syntax without converting', () => {
+    const converter = new HtmlConverter();
+    const pageLookupMap = {
+      titleToPage: new Map(),
+      idToPage: new Map([
+        [
+          'page-123',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'page.md',
+            title: 'Test Page',
+          },
+        ],
+      ]),
+      pathToPage: new Map([
+        [
+          'page.md',
+          {
+            pageId: 'page-123',
+            version: 1,
+            localPath: 'page.md',
+            title: 'Test Page',
+          },
+        ],
+      ]),
+    };
+
+    const markdown = 'Use the syntax `[Link](./page.md)` in markdown.';
+    const { html } = converter.convert(markdown, '/test/space', 'home.md', 'TEST', pageLookupMap);
+
+    // Inline code should NOT be converted
+    expect(html).toContain('<code>[Link](./page.md)</code>');
+    // But if we have a real link, it should be converted
+    expect(html.match(/<ac:link>/g)).toBeNull();
   });
 });

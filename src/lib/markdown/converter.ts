@@ -2,6 +2,7 @@ import TurndownService from 'turndown';
 import * as turndownPluginGfm from 'turndown-plugin-gfm';
 import type { Label, Page, User } from '../confluence-client/types.js';
 import { createFrontmatter, serializeMarkdown, type PageFrontmatter } from './frontmatter.js';
+import { confluenceLinkToRelativePath, extractPageTitleFromLink, type PageLookupMap } from './link-converter.js';
 
 /**
  * Markdown converter that transforms Confluence HTML to Markdown
@@ -13,6 +14,8 @@ export class MarkdownConverter {
   private warnings: string[] = [];
   private currentBaseUrl: string = '';
   private currentPageId: string = '';
+  private currentPagePath: string = '';
+  private pageLookupMap: PageLookupMap | null = null;
 
   constructor() {
     this.turndown = new TurndownService({
@@ -219,9 +222,15 @@ export class MarkdownConverter {
       },
     });
 
-    // Confluence page links
+    // Confluence page links (ac:link with ri:page)
+    // Per ADR-0022: Convert to relative markdown paths
     this.turndown.addRule('confluencePageLink', {
       filter: (node) => {
+        // Match <ac:link> elements containing <ri:page>
+        if (node.nodeName === 'AC:LINK' || node.nodeName.toLowerCase() === 'ac:link') {
+          return true;
+        }
+        // Also match standard <a> tags with confluence link classes
         return (
           node.nodeName === 'A' &&
           ((node as HTMLElement).getAttribute('href')?.includes('/wiki/') ||
@@ -230,9 +239,52 @@ export class MarkdownConverter {
       },
       replacement: (content, node) => {
         const element = node as HTMLElement;
+
+        // Check if this is an ac:link with ri:page
+        const riPage = element.querySelector('ri\\:page, [ri\\:page]');
+        if (riPage) {
+          const targetTitle = riPage.getAttribute('ri:content-title');
+          // TODO: Extract ri:space-key attribute to support cross-space links
+          // const targetSpaceKey = riPage.getAttribute('ri:space-key');
+
+          // Extract link text from ac:plain-text-link-body if content is empty
+          let linkText = content;
+          if (!linkText || linkText.trim() === '') {
+            // Try to find link body with different selectors
+            const linkBody =
+              element.querySelector('ac\\:plain-text-link-body, [ac\\:plain-text-link-body], plain-text-link-body') ||
+              element.querySelector('[ri\\:content-title]')?.nextElementSibling;
+            linkText = linkBody?.textContent?.trim() || element.textContent?.trim() || targetTitle || '';
+          }
+
+          // Only attempt conversion if we have all required context
+          if (targetTitle && this.pageLookupMap && this.currentPagePath) {
+            // Try to convert to relative path
+            const relativePath = confluenceLinkToRelativePath(targetTitle, this.currentPagePath, this.pageLookupMap);
+
+            if (relativePath) {
+              return `[${linkText}](${relativePath})`;
+            }
+
+            // Target page not found in sync state
+            this.warnings.push(`Link to "${targetTitle}" could not be resolved to local path (page not in sync state)`);
+          } else if (targetTitle && !this.pageLookupMap) {
+            // Missing lookup map context
+            this.warnings.push(`Link to "${targetTitle}" could not be converted (missing page lookup map)`);
+          } else if (!targetTitle) {
+            // Missing title in link
+            this.warnings.push('Confluence page link missing ri:content-title attribute');
+          }
+        }
+
+        // Fallback: preserve as Confluence URL
         const href = element.getAttribute('href') || '';
-        // Keep the link text, but note it's a Confluence link
-        return `[${content}](${href})`;
+        if (href) {
+          return `[${content}](${href})`;
+        }
+
+        // Last resort: just return the text
+        return content;
       },
     });
 
@@ -300,6 +352,7 @@ export class MarkdownConverter {
 
   /**
    * Convert a page to markdown with frontmatter
+   * Per ADR-0022: Converts Confluence page links to relative markdown paths
    */
   convertPage(
     page: Page,
@@ -309,10 +362,14 @@ export class MarkdownConverter {
     baseUrl?: string,
     author?: User,
     lastModifier?: User,
+    currentPagePath?: string,
+    pageLookupMap?: PageLookupMap,
   ): { markdown: string; warnings: string[] } {
-    // Set context for image URL generation
+    // Set context for image URL generation and link conversion
     this.currentBaseUrl = baseUrl || '';
     this.currentPageId = page.id;
+    this.currentPagePath = currentPagePath || '';
+    this.pageLookupMap = pageLookupMap || null;
 
     const html = page.body?.storage?.value || '';
     const content = this.convert(html);

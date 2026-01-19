@@ -156,6 +156,7 @@ class MarkdownConverter {
 - Task lists
 - Mentions → plain text
 - Macros → stripped with warning
+- Page links → relative markdown paths (`./path/to/page.md`)
 
 ### 4b. HtmlConverter
 
@@ -172,7 +173,8 @@ class HtmlConverter {
 - Code blocks → Confluence code macro (`ac:structured-macro`)
 - Blockquotes starting with "Info:", "Note:", "Warning:", "Tip:" → panel macros
 - Tables → Confluence table format
-- Links, bold, italic → standard HTML
+- Relative `.md` links → Confluence page links (`<ac:link><ri:page>`)
+- External links, bold, italic → standard HTML
 - Warnings for unsupported elements (user mentions, local images, task lists)
 
 ### 5. FileScanner
@@ -215,6 +217,82 @@ Manages per-folder `.confluence.json` files.
     }
   }
 }
+```
+
+## Link Handling
+
+### Overview
+
+Confluence page links are converted to relative markdown paths for local navigation, then back to Confluence storage format on push.
+
+### Pull: Confluence → Relative Paths
+
+When syncing from Confluence, `<ac:link><ri:page>` elements are converted to relative markdown links:
+
+```xml
+<!-- Confluence storage format -->
+<ac:link>
+  <ri:page ri:content-title="Architecture Overview" ri:space-key="ENG" />
+  <ac:plain-text-link-body><![CDATA[See Architecture]]></ac:plain-text-link-body>
+</ac:link>
+
+<!-- Becomes markdown -->
+[See Architecture](./Architecture/Overview.md)
+```
+
+**Algorithm:**
+1. Parse Confluence link to extract `ri:content-title` and optional `ri:space-key`
+2. Look up target page in sync state by title (and space if cross-space)
+3. Calculate relative path from current page to target page
+4. Replace link with markdown format `[text](relative-path.md)`
+5. Warn if target page not found in sync state
+
+**Cross-space links:** Currently unsupported - preserved as full Confluence URLs with warning.
+
+### Push: Relative Paths → Confluence
+
+When pushing to Confluence, relative `.md` links are converted to Confluence page references:
+
+```markdown
+<!-- Local markdown -->
+[See Architecture](./Architecture/Overview.md)
+
+<!-- Becomes Confluence storage format -->
+<ac:link>
+  <ri:page ri:content-title="Architecture Overview" ri:space-key="ENG" />
+  <ac:plain-text-link-body><![CDATA[See Architecture]]></ac:plain-text-link-body>
+</ac:link>
+```
+
+**Algorithm:**
+1. Detect markdown links with relative paths ending in `.md`
+2. Resolve relative path to absolute filesystem path
+3. Read target file's frontmatter to extract `title` and `space_key`
+4. Generate Confluence link using `ri:content-title` and `ri:space-key`
+5. Warn if target file doesn't exist or lacks required frontmatter
+
+**Note:** Confluence internally resolves `ri:content-title` to page IDs, so links survive title changes in Confluence.
+
+### Title Changes & File Renaming
+
+When a page title changes in Confluence, the local file is automatically re-slugged to match:
+
+**Detection:**
+1. During pull, compare `title` in frontmatter vs. incoming page title
+2. If different, calculate new slug from new title
+3. If slug conflicts with existing file, append number suffix (`-2`, `-3`, etc.)
+4. Rename file to new slug
+
+**Reference Updates:**
+1. Scan all markdown files in the space for links to the old path
+2. Update relative paths to point to new location
+3. Report files with updated references
+
+**Example:**
+```
+Title changes: "Getting Started" → "Quick Start Guide"
+File rename: getting-started.md → quick-start-guide.md
+Update refs: ["Home.md", "README.md"] point to new path
 ```
 
 ## Data Flow

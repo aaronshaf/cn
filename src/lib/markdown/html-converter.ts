@@ -1,11 +1,17 @@
 import { Marked, type Tokens, type Renderer } from 'marked';
+import { relativePathToConfluenceLink, type PageLookupMap } from './link-converter.js';
 
 /**
  * HTML converter that transforms Markdown to Confluence Storage Format
  * Inverse of MarkdownConverter - used for pushing local changes to Confluence
+ * Per ADR-0022: Converts relative markdown links to Confluence page links
  */
 export class HtmlConverter {
   private warnings: string[] = [];
+  private spaceRoot: string = '';
+  private currentPagePath: string = '';
+  private spaceKey: string = '';
+  private pageLookupMap: PageLookupMap | null = null;
 
   /**
    * Escape special XML characters for use in attributes
@@ -107,10 +113,50 @@ export class HtmlConverter {
 </table>\n`;
       },
 
-      // Links - preserve as standard HTML
+      // Links - convert relative .md links to Confluence page links (ADR-0022)
       link(this: Renderer, token: Tokens.Link): string {
-        const titleAttr = token.title ? ` title="${self.escapeXml(token.title)}"` : '';
         const text = this.parser.parseInline(token.tokens);
+
+        // Check if this is a relative .md link (local page reference)
+        if (token.href.endsWith('.md') && !token.href.startsWith('http://') && !token.href.startsWith('https://')) {
+          // Try to convert to Confluence page link - requires full context
+          if (self.pageLookupMap && self.currentPagePath && self.spaceRoot && self.spaceKey) {
+            const linkInfo = relativePathToConfluenceLink(
+              token.href,
+              self.currentPagePath,
+              self.spaceRoot,
+              self.pageLookupMap,
+            );
+
+            if (linkInfo?.title) {
+              // Generate Confluence page link format
+              return `<ac:link>
+  <ri:page ri:content-title="${self.escapeXml(linkInfo.title)}" ri:space-key="${self.spaceKey}" />
+  <ac:plain-text-link-body><![CDATA[${text}]]></ac:plain-text-link-body>
+</ac:link>`;
+            }
+
+            // Target not found or missing title - warn and fall through to standard HTML link
+            if (linkInfo && !linkInfo.title) {
+              self.warnings.push(`Link to "${token.href}" has missing title in sync state - preserving as HTML link`);
+            } else {
+              self.warnings.push(`Link to "${token.href}" could not be resolved - target page not found in sync state`);
+            }
+          } else if (process.env.DEBUG) {
+            // DEBUG mode: warn about missing context for link conversion
+            const missingContext = [];
+            if (!self.pageLookupMap) missingContext.push('pageLookupMap');
+            if (!self.currentPagePath) missingContext.push('currentPagePath');
+            if (!self.spaceRoot) missingContext.push('spaceRoot');
+            if (!self.spaceKey) missingContext.push('spaceKey');
+            console.warn(`DEBUG: Link "${token.href}" not converted - missing context: ${missingContext.join(', ')}`);
+          }
+          // If missing context (pageLookupMap, etc.), silently fall through to standard HTML link
+          // This handles cases where conversion wasn't set up (e.g., standalone markdown processing)
+        }
+
+        // External link or fallback - use standard HTML
+        const titleAttr = token.title ? ` title="${self.escapeXml(token.title)}"` : '';
         return `<a href="${self.escapeXml(token.href)}"${titleAttr}>${text}</a>`;
       },
 
@@ -297,9 +343,26 @@ export class HtmlConverter {
 
   /**
    * Convert Markdown to Confluence Storage Format HTML
+   * Per ADR-0022: Converts relative .md links to Confluence page links
+   *
+   * @param markdown - Markdown content to convert
+   * @param spaceRoot - Absolute path to space root directory (for link resolution)
+   * @param currentPagePath - Current page's path relative to space root (for link resolution)
+   * @param spaceKey - Confluence space key (for link generation)
+   * @param pageLookupMap - Page lookup map for finding target pages
    */
-  convert(markdown: string): { html: string; warnings: string[] } {
+  convert(
+    markdown: string,
+    spaceRoot?: string,
+    currentPagePath?: string,
+    spaceKey?: string,
+    pageLookupMap?: PageLookupMap,
+  ): { html: string; warnings: string[] } {
     this.warnings = [];
+    this.spaceRoot = spaceRoot || '';
+    this.currentPagePath = currentPagePath || '';
+    this.spaceKey = spaceKey || '';
+    this.pageLookupMap = pageLookupMap || null;
 
     // Detect unsupported features before conversion
     this.detectUnsupportedFeatures(markdown);

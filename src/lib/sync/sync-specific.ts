@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { ConfluenceClient, User } from '../confluence-client/index.js';
 import { SyncError } from '../errors.js';
-import type { MarkdownConverter } from '../markdown/index.js';
+import { buildPageLookupMap, type MarkdownConverter } from '../markdown/index.js';
 import {
   readSpaceConfig,
   updateLastSync,
@@ -130,6 +130,10 @@ export async function syncSpecificPages(
     // Create cached user fetcher
     const fetchUser = createUserFetcher(client);
 
+    // Build page lookup map for link conversion (ADR-0022)
+    // Enable duplicate title warnings during sync
+    const pageLookupMap = buildPageLookupMap(config, true);
+
     // Process each page
     let currentChange = 0;
     const totalChanges = result.changes.modified.length;
@@ -151,6 +155,9 @@ export async function syncSpecificPages(
         const author = await fetchUser(fullPage.authorId);
         const lastModifier = await fetchUser(fullPage.version?.authorId);
 
+        const localPath = change.localPath ?? '';
+
+        // Convert to markdown with link conversion (ADR-0022)
         const { markdown, warnings } = converter.convertPage(
           fullPage,
           config.spaceKey,
@@ -159,10 +166,11 @@ export async function syncSpecificPages(
           baseUrl,
           author,
           lastModifier,
+          localPath,
+          pageLookupMap,
         );
         result.warnings.push(...warnings.map((w) => `${fullPage.title}: ${w}`));
 
-        const localPath = change.localPath ?? '';
         assertPathWithinDirectory(directory, localPath);
         const fullPath = join(directory, localPath);
         mkdirSync(dirname(fullPath), { recursive: true });
@@ -173,6 +181,7 @@ export async function syncSpecificPages(
           version: fullPage.version?.number || 1,
           lastModified: fullPage.version?.createdAt,
           localPath,
+          title: fullPage.title, // Store title for link conversion (ADR-0022)
         };
         config = updatePageSyncInfo(config, syncInfo);
         writeSpaceConfig(directory, config);

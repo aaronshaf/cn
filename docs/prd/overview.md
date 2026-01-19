@@ -10,6 +10,7 @@
 2. **Preserve metadata** - Use frontmatter to store page metadata (IDs, labels, authors, etc.)
 3. **Human-readable filenames** - Slugified page titles as filenames
 4. **Offline access** - Browse Confluence content without network access
+5. **Relative path links** - Convert Confluence page links to relative markdown paths for local navigation
 
 ## Non-Goals
 
@@ -31,6 +32,8 @@
 | Metadata file | `.confluence.json` | Per-folder space configuration |
 | HTML→MD | turndown | Proven library, configurable |
 | Conflicts | Append counter | Clean names (page.md, page-2.md) |
+| Page links | Relative paths | Local navigation in markdown viewers |
+| Title changes | Auto re-slug files | Keep filenames in sync with titles |
 
 ## Commands
 

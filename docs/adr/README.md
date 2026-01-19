@@ -27,3 +27,4 @@ Records of significant architectural decisions with context and rationale. Each 
 | [0019](0019-sync-modes.md) | Smart vs full sync modes |
 | [0020](0020-bidirectional-sync-push.md) | Push command for bidirectional sync |
 | [0021](0021-use-meilisearch-for-local-search.md) | Meilisearch for local search |
+| [0022](0022-relative-path-link-handling.md) | Relative path link handling for inter-page links |

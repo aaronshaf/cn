@@ -10,6 +10,7 @@ const PageSyncInfoSchema = Schema.Struct({
   version: Schema.Number,
   lastModified: Schema.optional(Schema.String),
   localPath: Schema.String,
+  title: Schema.optional(Schema.String), // Added for link conversion (ADR-0022)
 });
 
 /**
