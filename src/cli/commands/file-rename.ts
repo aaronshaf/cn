@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import chalk from 'chalk';
-import { slugify } from '../../lib/markdown/index.js';
+import { slugify, updateReferencesAfterRename } from '../../lib/markdown/index.js';
 
 // Index files that should not be renamed based on title (case-insensitive check)
 const INDEX_FILES = new Set(['index.md', 'readme.md']);
@@ -23,12 +23,14 @@ export interface RenameResult {
  * Handle file renaming when title changes
  * Returns the final local path for updating sync state
  * Uses atomic operations: writes to temp file first, then renames
+ * Also updates references in other markdown files when a rename occurs
  */
 export function handleFileRename(
   filePath: string,
   originalRelativePath: string,
   expectedTitle: string,
   updatedMarkdown: string,
+  spaceRoot?: string,
 ): RenameResult {
   const currentFilename = basename(filePath);
   const currentDir = dirname(filePath);
@@ -80,8 +82,18 @@ export function handleFileRename(
       }
 
       const relativeDir = dirname(finalLocalPath);
+      const oldRelativePath = finalLocalPath;
       finalLocalPath = relativeDir === '.' ? expectedFilename : join(relativeDir, expectedFilename);
       console.log(chalk.cyan(`  Renamed: ${currentFilename} → ${expectedFilename}`));
+
+      // Update references in other markdown files that link to the old filename
+      if (spaceRoot) {
+        const updatedFiles = updateReferencesAfterRename(spaceRoot, oldRelativePath, finalLocalPath);
+        if (updatedFiles.length > 0) {
+          console.log(chalk.cyan(`  Updated ${updatedFiles.length} file(s) with new link path`));
+        }
+      }
+
       return { finalPath: finalLocalPath, wasRenamed: true };
     }
 

@@ -446,8 +446,14 @@ async function createNewPage(
 
     const updatedMarkdown = serializeMarkdown(updatedFrontmatter, content);
 
-    // Handle file rename if title changed
-    const { finalPath: finalLocalPath } = handleFileRename(filePath, relativePath, createdPage.title, updatedMarkdown);
+    // Handle file rename if title changed (also updates references in other files)
+    const { finalPath: finalLocalPath } = handleFileRename(
+      filePath,
+      relativePath,
+      createdPage.title,
+      updatedMarkdown,
+      directory,
+    );
 
     // Update .confluence.json sync state
     let updatedSpaceConfig = readSpaceConfig(directory);
@@ -613,8 +619,14 @@ async function updateExistingPage(
     };
     const updatedMarkdown = serializeMarkdown(updatedFrontmatter, content);
 
-    // Handle file rename if title changed
-    const { finalPath: finalLocalPath } = handleFileRename(filePath, relativePath, updatedPage.title, updatedMarkdown);
+    // Handle file rename if title changed (also updates references in other files)
+    const { finalPath: finalLocalPath } = handleFileRename(
+      filePath,
+      relativePath,
+      updatedPage.title,
+      updatedMarkdown,
+      directory,
+    );
 
     // Update .confluence.json sync state
     let updatedSpaceConfig = readSpaceConfig(directory);
