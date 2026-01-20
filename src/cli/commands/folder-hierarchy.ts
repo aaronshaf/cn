@@ -201,6 +201,7 @@ export async function ensureFolderHierarchy(
     }
   }
 
-  // Return the leaf folder ID - page needs to be moved into this folder
-  return { parentId: currentParentId, shouldUseMoveWorkaround: true, updatedConfig: config };
+  // Return the leaf folder ID - page will be created with this as parentId
+  // The v2 API supports creating pages directly under folders
+  return { parentId: currentParentId, shouldUseMoveWorkaround: false, updatedConfig: config };
 }

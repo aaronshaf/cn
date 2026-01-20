@@ -354,8 +354,6 @@ async function createNewPage(
 
   // Determine parent handling - either explicit parent_id or auto-create folder hierarchy
   let parentId: string | undefined = frontmatter.parent_id ?? undefined;
-  let intendedParentId: string | undefined; // Track intended parent for retry on move failure
-  let shouldUseMoveWorkaround = false;
   let currentConfig = spaceConfig;
 
   // Validate explicit parent_id if specified
@@ -377,19 +375,16 @@ async function createNewPage(
     // If so, ensure folder hierarchy exists (ADR-0023)
     const result = await ensureFolderHierarchy(client, spaceConfig, directory, relativePath, options.dryRun);
     parentId = result.parentId;
-    intendedParentId = result.parentId; // Save for potential retry
-    shouldUseMoveWorkaround = result.shouldUseMoveWorkaround;
     currentConfig = result.updatedConfig;
   }
 
   // Build create request
-  // Note: If shouldUseMoveWorkaround is true, we create page at space root first, then move to folder
-  // This is because Confluence v2 API doesn't support creating pages directly under folders
+  // parentId can be a page ID or folder ID - v2 API supports both
   const createRequest: CreatePageRequest = {
     spaceId: currentConfig.spaceId,
     status: 'current',
     title,
-    parentId: shouldUseMoveWorkaround ? undefined : parentId,
+    parentId,
     body: {
       representation: 'storage',
       value: html,
@@ -403,9 +398,7 @@ async function createNewPage(
     console.log(chalk.gray('Would create new page:'));
     console.log(chalk.gray(`  Title: ${title}`));
     console.log(chalk.gray(`  Space: ${currentConfig.spaceKey}`));
-    if (shouldUseMoveWorkaround && parentId) {
-      console.log(chalk.gray(`  Would move to folder ID: ${parentId}`));
-    } else if (createRequest.parentId) {
+    if (createRequest.parentId) {
       console.log(chalk.gray(`  Parent ID: ${createRequest.parentId}`));
     }
     console.log(chalk.gray(`  Content size: ${html.length} characters`));
@@ -419,42 +412,6 @@ async function createNewPage(
     console.log(chalk.gray('  Creating page on Confluence...'));
     const createdPage = await client.createPage(createRequest);
 
-    // Move page to folder if needed (ADR-0023)
-    let moveSucceeded = false;
-    if (shouldUseMoveWorkaround && parentId) {
-      console.log(chalk.gray(`  Moving page into folder...`));
-
-      // Retry move with delays - Confluence may need time after page creation
-      const maxRetries = 3;
-      const retryDelayMs = 1000;
-      let lastError: Error | undefined;
-
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          await client.movePage(createdPage.id, parentId, 'append');
-          console.log(chalk.green(`  Moved page to folder`));
-          moveSucceeded = true;
-          break;
-        } catch (moveError) {
-          lastError = moveError instanceof Error ? moveError : new Error(String(moveError));
-          if (attempt < maxRetries) {
-            console.log(chalk.gray(`  Move attempt ${attempt} failed, retrying in ${retryDelayMs}ms...`));
-            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-          }
-        }
-      }
-
-      if (!moveSucceeded && lastError) {
-        // If move fails after retries, warn but don't fail the entire operation
-        // The page was created successfully, just not in the right location
-        // Preserve intendedParentId in frontmatter so user can retry
-        console.log(chalk.yellow(`  Warning: Could not move page to folder. Page created at space root.`));
-        console.log(chalk.gray(`  Move error: ${lastError.message}`));
-        console.log(chalk.yellow(`  The intended parent_id will be preserved for retry.`));
-        console.log(chalk.yellow(`  Run "cn push ${relativePath}" again to retry the move.`));
-      }
-    }
-
     // Set editor property to v2 to enable the new editor
     // This is needed because the V2 API with storage format defaults to legacy editor
     // See: https://community.developer.atlassian.com/t/confluence-rest-api-v2-struggling-to-create-a-page-with-the-new-editor/75235
@@ -465,15 +422,8 @@ async function createNewPage(
       console.log(chalk.yellow('  Warning: Could not set editor to v2. Page may use legacy editor.'));
     }
 
-    // Fetch updated page to get correct parentId after move (only if move succeeded)
-    const finalPage = moveSucceeded ? await client.getPage(createdPage.id, false) : createdPage;
-
     // Build complete frontmatter from response
-    // If move failed, preserve the intended parent_id so user can retry
-    const webui = finalPage._links?.webui || createdPage._links?.webui;
-    const effectiveParentId = moveSucceeded
-      ? (finalPage.parentId ?? undefined)
-      : (intendedParentId ?? finalPage.parentId ?? undefined);
+    const webui = createdPage._links?.webui;
     const newFrontmatter: PageFrontmatter = {
       page_id: createdPage.id,
       title: createdPage.title,
@@ -481,7 +431,7 @@ async function createNewPage(
       created_at: createdPage.createdAt,
       updated_at: createdPage.version?.createdAt,
       version: createdPage.version?.number || 1,
-      parent_id: effectiveParentId,
+      parent_id: createdPage.parentId ?? undefined,
       author_id: createdPage.authorId,
       last_modifier_id: createdPage.version?.authorId,
       url: webui ? `${config.confluenceUrl}/wiki${webui}` : undefined,
