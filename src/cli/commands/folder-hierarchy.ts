@@ -111,10 +111,10 @@ export async function ensureFolderHierarchy(
   for (const segment of segments) {
     currentPath = currentPath ? `${currentPath}/${segment}` : segment;
 
-    // Check if folder already exists in config
-    const existingFolder = getFolderByPath(config, currentPath);
-    if (existingFolder) {
-      currentParentId = existingFolder.folderId;
+    // Check if folder already exists in local config
+    const existingLocalFolder = getFolderByPath(config, currentPath);
+    if (existingLocalFolder) {
+      currentParentId = existingLocalFolder.folderId;
       continue;
     }
 
@@ -122,6 +122,29 @@ export async function ensureFolderHierarchy(
     const { sanitized: folderTitle, wasModified } = sanitizeFolderTitle(segment);
     if (wasModified) {
       console.log(chalk.yellow(`  Note: Folder title sanitized: "${segment}" → "${folderTitle}"`));
+    }
+
+    // Check if folder already exists on Confluence (not in local config)
+    const existingRemoteFolder = await client.findFolderByTitle(config.spaceKey, folderTitle, currentParentId);
+    if (existingRemoteFolder) {
+      console.log(
+        chalk.gray(
+          `  Found existing folder on Confluence: ${existingRemoteFolder.title} (id: ${existingRemoteFolder.id})`,
+        ),
+      );
+
+      // Track folder in config
+      const folderInfo: FolderSyncInfo = {
+        folderId: existingRemoteFolder.id,
+        title: existingRemoteFolder.title,
+        parentId: currentParentId,
+        localPath: currentPath,
+      };
+      config = updateFolderSyncInfo(config, folderInfo);
+      writeSpaceConfig(directory, config);
+
+      currentParentId = existingRemoteFolder.id;
+      continue;
     }
 
     if (dryRun) {
@@ -172,47 +195,6 @@ export async function ensureFolderHierarchy(
 
       currentParentId = folder.id;
     } catch (error) {
-      // Check if folder already exists (400 or 409 error with duplicate message)
-      // Error message varies: "already exists" or "A folder exists with the same title"
-      const errorMsg = error instanceof Error ? error.message.toLowerCase() : '';
-      const isDuplicateError =
-        error instanceof ApiError &&
-        (error.statusCode === 400 || error.statusCode === 409) &&
-        (errorMsg.includes('already exists') || errorMsg.includes('folder exists'));
-
-      if (isDuplicateError) {
-        // Try to find the existing folder by title
-        console.log(chalk.gray(`  Folder "${folderTitle}" already exists, looking up...`));
-        const existingFolder = await client.findFolderByTitle(config.spaceKey, folderTitle, currentParentId);
-
-        if (existingFolder) {
-          console.log(chalk.green(`  Found existing folder: ${existingFolder.title} (id: ${existingFolder.id})`));
-
-          // Track folder in config
-          const folderInfo: FolderSyncInfo = {
-            folderId: existingFolder.id,
-            title: existingFolder.title,
-            parentId: currentParentId,
-            localPath: currentPath,
-          };
-          config = updateFolderSyncInfo(config, folderInfo);
-
-          // Save config immediately
-          writeSpaceConfig(directory, config);
-
-          currentParentId = existingFolder.id;
-          continue;
-        }
-
-        // Couldn't find the folder - fall back to error
-        console.error(chalk.red(`  Could not find existing folder "${folderTitle}" via search.`));
-        console.log(chalk.yellow(`  Run "cn pull" to sync folder structure, then try push again.`));
-        throw new FolderHierarchyError(
-          `Folder "${folderTitle}" exists on Confluence but could not be found. Run "cn pull" first.`,
-          EXIT_CODES.GENERAL_ERROR,
-        );
-      }
-
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(chalk.red(`  Failed to create folder "${folderTitle}": ${message}`));
       throw new FolderHierarchyError(`Failed to create folder: ${folderTitle}`, EXIT_CODES.GENERAL_ERROR);
