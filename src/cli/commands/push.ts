@@ -5,6 +5,7 @@ import { basename, resolve } from 'node:path';
 import { ConfigManager } from '../../lib/config.js';
 import { ConfluenceClient, type CreatePageRequest, type UpdatePageRequest } from '../../lib/confluence-client/index.js';
 import { EXIT_CODES, PageNotFoundError, VersionConflictError } from '../../lib/errors.js';
+import { sortByDependencies } from '../../lib/dependency-sorter.js';
 import { detectPushCandidates, type PushCandidate } from '../../lib/file-scanner.js';
 import {
   buildPageLookupMap,
@@ -181,12 +182,24 @@ async function pushBatch(
     return;
   }
 
-  // Show summary
-  const newCount = candidates.filter((c) => c.type === 'new').length;
-  const modifiedCount = candidates.filter((c) => c.type === 'modified').length;
+  // Sort by dependencies so linked-to pages are pushed first
+  const { sorted: sortedCandidates, cycles } = sortByDependencies(candidates, directory);
 
-  console.log(`Found ${chalk.bold(candidates.length)} file(s) to push:`);
-  for (const candidate of candidates) {
+  // Warn about circular dependencies
+  if (cycles.length > 0) {
+    console.log(chalk.yellow('Circular link dependencies detected:'));
+    for (const cycle of cycles) {
+      console.log(chalk.yellow(`  ${cycle.join(' -> ')} -> ${cycle[0]}`));
+    }
+    console.log('');
+  }
+
+  // Show summary
+  const newCount = sortedCandidates.filter((c) => c.type === 'new').length;
+  const modifiedCount = sortedCandidates.filter((c) => c.type === 'modified').length;
+
+  console.log(`Found ${chalk.bold(sortedCandidates.length)} file(s) to push:`);
+  for (const candidate of sortedCandidates) {
     const typeLabel = candidate.type === 'new' ? chalk.cyan('[N]') : chalk.yellow('[M]');
     console.log(`  ${typeLabel} ${candidate.path}`);
   }
@@ -205,7 +218,7 @@ async function pushBatch(
   let failed = 0;
   const failedFiles: string[] = [];
 
-  for (const candidate of candidates) {
+  for (const candidate of sortedCandidates) {
     const typeLabel = candidate.type === 'new' ? 'create' : 'update';
     const shouldPush = await confirm({
       message: `Push ${candidate.path}? (${typeLabel})`,
@@ -307,14 +320,17 @@ async function createNewPage(
   console.log(chalk.cyan('  (New page - no page_id in frontmatter)'));
 
   // Convert markdown to HTML with link conversion (ADR-0022)
+  // Re-read config to get the latest sync state (important for batch pushes where
+  // earlier files may have been pushed and updated the sync state)
   console.log(chalk.gray('  Converting markdown to HTML...'));
   const converter = new HtmlConverter();
-  const pageLookupMap = buildPageLookupMap(spaceConfig);
+  const freshConfig = readSpaceConfig(directory) || spaceConfig;
+  const pageLookupMap = buildPageLookupMap(freshConfig);
   const { html, warnings } = converter.convert(
     content,
     directory,
     relativePath.replace(/^\.\//, ''),
-    spaceConfig.spaceKey,
+    freshConfig.spaceKey,
     pageLookupMap,
   );
 
@@ -477,6 +493,7 @@ async function createNewPage(
         version: createdPage.version?.number || 1,
         lastModified: createdPage.version?.createdAt,
         localPath: finalLocalPath,
+        title: createdPage.title,
       });
       writeSpaceConfig(directory, updatedSpaceConfig);
     }
@@ -545,14 +562,17 @@ async function updateExistingPage(
     }
 
     // Convert markdown to HTML with link conversion (ADR-0022)
+    // Re-read config to get the latest sync state (important for batch pushes where
+    // earlier files may have been pushed and updated the sync state)
     console.log(chalk.gray('  Converting markdown to HTML...'));
     const converter = new HtmlConverter();
-    const pageLookupMap = buildPageLookupMap(spaceConfig);
+    const freshConfig = readSpaceConfig(directory) || spaceConfig;
+    const pageLookupMap = buildPageLookupMap(freshConfig);
     const { html, warnings } = converter.convert(
       content,
       directory,
       relativePath.replace(/^\.\//, ''),
-      spaceConfig.spaceKey,
+      freshConfig.spaceKey,
       pageLookupMap,
     );
 
@@ -636,6 +656,7 @@ async function updateExistingPage(
         version: updatedPage.version?.number || newVersion,
         lastModified: updatedPage.version?.createdAt,
         localPath: finalLocalPath,
+        title: updatedPage.title,
       });
       writeSpaceConfig(directory, updatedSpaceConfig);
     }
