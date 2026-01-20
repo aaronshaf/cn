@@ -173,10 +173,12 @@ export async function ensureFolderHierarchy(
       currentParentId = folder.id;
     } catch (error) {
       // Check if folder already exists (400 or 409 error with duplicate message)
+      // Error message varies: "already exists" or "A folder exists with the same title"
+      const errorMsg = error instanceof Error ? error.message.toLowerCase() : '';
       const isDuplicateError =
         error instanceof ApiError &&
         (error.statusCode === 400 || error.statusCode === 409) &&
-        error.message.toLowerCase().includes('already exists');
+        (errorMsg.includes('already exists') || errorMsg.includes('folder exists'));
 
       if (isDuplicateError) {
         // Try to find the existing folder by title

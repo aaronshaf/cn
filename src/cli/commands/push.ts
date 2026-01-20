@@ -427,11 +427,13 @@ async function createNewPage(
         await client.movePage(createdPage.id, parentId, 'append');
         console.log(chalk.green(`  Moved page to folder`));
         moveSucceeded = true;
-      } catch (_moveError) {
+      } catch (moveError) {
         // If move fails, warn but don't fail the entire operation
         // The page was created successfully, just not in the right location
         // Preserve intendedParentId in frontmatter so user can retry
+        const moveErrorMsg = moveError instanceof Error ? moveError.message : String(moveError);
         console.log(chalk.yellow(`  Warning: Could not move page to folder. Page created at space root.`));
+        console.log(chalk.gray(`  Move error: ${moveErrorMsg}`));
         console.log(chalk.yellow(`  The intended parent_id will be preserved for retry.`));
         console.log(chalk.yellow(`  Run "cn push ${relativePath}" again to retry the move.`));
       }
