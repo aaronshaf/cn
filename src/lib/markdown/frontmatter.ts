@@ -8,7 +8,7 @@ import type { Label, Page, User } from '../confluence-client/types.js';
 export interface PageFrontmatter {
   page_id: string;
   title: string;
-  space_key: string;
+  space_key?: string; // Deprecated: inferred from .confluence.json
   created_at?: string;
   updated_at?: string;
   version?: number;
@@ -27,10 +27,10 @@ export interface PageFrontmatter {
 
 /**
  * Create frontmatter from a Confluence page
+ * Note: space_key is not included as it's inferred from .confluence.json
  */
 export function createFrontmatter(
   page: Page,
-  spaceKey: string,
   labels: Label[] = [],
   parentTitle?: string,
   baseUrl?: string,
@@ -43,7 +43,6 @@ export function createFrontmatter(
   return {
     page_id: page.id,
     title: page.title,
-    space_key: spaceKey,
     created_at: page.createdAt,
     updated_at: page.version?.createdAt,
     version: page.version?.number,

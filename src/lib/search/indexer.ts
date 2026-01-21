@@ -5,6 +5,7 @@
 import { type Dirent, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseMarkdown, type PageFrontmatter } from '../markdown/frontmatter.js';
+import { readSpaceConfig } from '../space-config.js';
 import type { SearchDocument } from './types.js';
 
 /**
@@ -51,8 +52,9 @@ function parseTimestamp(dateStr: string | undefined): number | null {
 
 /**
  * Convert a markdown file to a search document
+ * @param spaceKey - Space key from .confluence.json (preferred over frontmatter)
  */
-function fileToSearchDocument(filePath: string, baseDir: string): SearchDocument | null {
+function fileToSearchDocument(filePath: string, baseDir: string, spaceKey: string): SearchDocument | null {
   try {
     const content = readFileSync(filePath, 'utf-8');
     const { frontmatter, content: markdownContent } = parseMarkdown(content);
@@ -68,7 +70,7 @@ function fileToSearchDocument(filePath: string, baseDir: string): SearchDocument
       id: frontmatter.page_id,
       title: frontmatter.title || localPath,
       content: markdownContent.trim(),
-      space_key: frontmatter.space_key || '',
+      space_key: spaceKey || frontmatter.space_key || '',
       labels: frontmatter.labels || [],
       author_email: frontmatter.author_email || null,
       last_modifier_email: frontmatter.last_modifier_email || null,
@@ -97,6 +99,7 @@ export interface IndexingResult {
 
 /**
  * Scan directory and create search documents from all markdown files
+ * Reads space_key from .confluence.json in the directory
  */
 export function scanDirectory(directory: string): IndexingResult {
   const result: IndexingResult = {
@@ -119,11 +122,15 @@ export function scanDirectory(directory: string): IndexingResult {
     return result;
   }
 
+  // Read space_key from .confluence.json (preferred over frontmatter)
+  const spaceConfig = readSpaceConfig(directory);
+  const spaceKey = spaceConfig?.spaceKey || '';
+
   for (const filePath of walkDirectory(directory, directory)) {
     result.scannedFiles++;
 
     try {
-      const doc = fileToSearchDocument(filePath, directory);
+      const doc = fileToSearchDocument(filePath, directory, spaceKey);
       if (doc) {
         result.documents.push(doc);
         result.indexedFiles++;
@@ -141,11 +148,13 @@ export function scanDirectory(directory: string): IndexingResult {
 
 /**
  * Create a search document from frontmatter (for testing or direct creation)
+ * @param spaceKey - Optional space key (preferred over frontmatter.space_key)
  */
 export function createSearchDocument(
   frontmatter: Partial<PageFrontmatter>,
   content: string,
   localPath: string,
+  spaceKey?: string,
 ): SearchDocument | null {
   if (!frontmatter.page_id) {
     return null;
@@ -155,7 +164,7 @@ export function createSearchDocument(
     id: frontmatter.page_id,
     title: frontmatter.title || localPath,
     content: content.trim(),
-    space_key: frontmatter.space_key || '',
+    space_key: spaceKey || frontmatter.space_key || '',
     labels: frontmatter.labels || [],
     author_email: frontmatter.author_email || null,
     last_modifier_email: frontmatter.last_modifier_email || null,

@@ -458,7 +458,6 @@ export class SyncEngine {
           // Convert to markdown with link conversion (ADR-0022)
           const { markdown, warnings } = this.converter.convertPage(
             fullPage,
-            config.spaceKey,
             labels,
             parentTitle,
             this.baseUrl,
@@ -541,7 +540,6 @@ export class SyncEngine {
           // Use newPath for link conversion since that's where the file will be
           const { markdown, warnings } = this.converter.convertPage(
             fullPage,
-            config.spaceKey,
             labels,
             parentTitle,
             this.baseUrl,

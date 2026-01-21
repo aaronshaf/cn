@@ -40,11 +40,12 @@ Use comprehensive frontmatter with all available metadata.
 
 ## Schema
 
+Note: `space_key` is no longer included in frontmatter as it's inferred from `.confluence.json` in the directory root.
+
 ```yaml
 ---
 page_id: "abc123"
 title: "Getting Started"
-space_key: "ENG"
 created_at: "2023-06-15T09:00:00Z"
 updated_at: "2024-01-14T08:00:00Z"
 version: 5

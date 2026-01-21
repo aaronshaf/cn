@@ -174,7 +174,6 @@ export async function syncSpecificPages(
         // Convert to markdown with link conversion (ADR-0022)
         const { markdown, warnings } = converter.convertPage(
           fullPage,
-          config.spaceKey,
           labels,
           parentTitle,
           baseUrl,

@@ -426,11 +426,11 @@ async function createNewPage(
     }
 
     // Build complete frontmatter from response
+    // Note: space_key is not included (inferred from .confluence.json)
     const webui = createdPage._links?.webui;
     const newFrontmatter: PageFrontmatter = {
       page_id: createdPage.id,
       title: createdPage.title,
-      space_key: currentConfig.spaceKey,
       created_at: createdPage.createdAt,
       updated_at: createdPage.version?.createdAt,
       version: createdPage.version?.number || 1,
@@ -619,12 +619,12 @@ async function updateExistingPage(
     const updatedPage = await client.updatePage(updateRequest);
 
     // Update local frontmatter with new metadata from response
+    // Note: space_key is not included (inferred from .confluence.json)
     const webui = updatedPage._links?.webui;
     const updatedFrontmatter: PageFrontmatter = {
       ...frontmatter,
       page_id: pageId,
       title: updatedPage.title,
-      space_key: frontmatter.space_key || spaceConfig.spaceKey || '',
       version: updatedPage.version?.number || newVersion,
       updated_at: updatedPage.version?.createdAt,
       last_modifier_id: updatedPage.version?.authorId,

@@ -353,10 +353,10 @@ export class MarkdownConverter {
   /**
    * Convert a page to markdown with frontmatter
    * Per ADR-0022: Converts Confluence page links to relative markdown paths
+   * Note: space_key is not included in frontmatter (inferred from .confluence.json)
    */
   convertPage(
     page: Page,
-    spaceKey: string,
     labels: Label[] = [],
     parentTitle?: string,
     baseUrl?: string,
@@ -375,7 +375,7 @@ export class MarkdownConverter {
     const bodyContent = this.convert(html);
     // Add H1 with page title at the start of content (Confluence shows title separately)
     const content = `# ${page.title}\n\n${bodyContent}`;
-    const frontmatter = createFrontmatter(page, spaceKey, labels, parentTitle, baseUrl, author, lastModifier);
+    const frontmatter = createFrontmatter(page, labels, parentTitle, baseUrl, author, lastModifier);
     const markdown = serializeMarkdown(frontmatter, content);
 
     return {

@@ -84,11 +84,10 @@ describe('createFrontmatter', () => {
       },
     };
 
-    const frontmatter = createFrontmatter(page, 'TEST', [], 'Parent Page', 'https://test.atlassian.net');
+    const frontmatter = createFrontmatter(page, [], 'Parent Page', 'https://test.atlassian.net');
 
     expect(frontmatter.page_id).toBe('page-123');
     expect(frontmatter.title).toBe('Test Page');
-    expect(frontmatter.space_key).toBe('TEST');
     expect(frontmatter.version).toBe(1);
     expect(frontmatter.parent_id).toBe('page-parent');
     expect(frontmatter.parent_title).toBe('Parent Page');
@@ -108,7 +107,7 @@ describe('createFrontmatter', () => {
       { id: 'label-2', name: 'draft' },
     ];
 
-    const frontmatter = createFrontmatter(page, 'TEST', labels);
+    const frontmatter = createFrontmatter(page, labels);
 
     expect(frontmatter.labels).toEqual(['important', 'draft']);
   });
@@ -331,7 +330,7 @@ describe('MarkdownConverter', () => {
       },
     };
 
-    const { markdown } = converter.convertPage(page, 'TEST');
+    const { markdown } = converter.convertPage(page);
 
     expect(markdown).toContain('page_id: page-123');
     expect(markdown).toContain('title: Test Page');
