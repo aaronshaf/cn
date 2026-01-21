@@ -141,7 +141,7 @@ Search indexed Confluence content.
     "labels": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Filter by labels (AND logic)"
+      "description": "Filter by labels (OR logic)"
     },
     "author": {
       "type": "string",

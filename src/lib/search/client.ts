@@ -157,7 +157,7 @@ function extractActiveFilters(options: SearchOptions): SearchFilters | undefined
  */
 const INDEX_SETTINGS = {
   searchableAttributes: ['title', 'content'],
-  filterableAttributes: ['space_key', 'labels', 'author_email', 'last_modifier_email'],
+  filterableAttributes: ['space_key', 'labels', 'author_email', 'last_modifier_email', 'created_at', 'updated_at'],
   sortableAttributes: ['created_at', 'updated_at'],
   rankingRules: ['words', 'typo', 'proximity', 'attribute', 'sort', 'exactness'],
 };

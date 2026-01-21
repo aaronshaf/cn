@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXIT_CODES } from '../lib/errors.js';
 import { cloneCommand } from './commands/clone.js';
+import { mcpCommand } from './commands/mcp.js';
 import { openCommand } from './commands/open.js';
 import { pullCommand } from './commands/pull.js';
 import { pushCommand } from './commands/push.js';
@@ -238,6 +239,14 @@ ${chalk.yellow('Subcommands:')}
 ${chalk.yellow('Search Options:')}
   --labels <label>          Filter by label (can be repeated)
   --author <email>          Filter by author email
+  --created-after <date>    Documents created after date (YYYY-MM-DD)
+  --created-before <date>   Documents created before date (YYYY-MM-DD)
+  --updated-after <date>    Documents updated after date (YYYY-MM-DD)
+  --updated-before <date>   Documents updated before date (YYYY-MM-DD)
+  --created-within <dur>    Created within duration (e.g., 30d, 2w, 3m, 1y)
+  --updated-within <dur>    Updated within duration (e.g., 7d, 2w)
+  --stale <dur>             Not updated within duration (e.g., 90d, 6m)
+  --sort <field>            Sort by: created_at, updated_at (prefix - for desc)
   --limit <n>               Max results (default: 10)
   --json                    Output as JSON
   --xml                     Output as XML
@@ -255,9 +264,51 @@ ${chalk.yellow('Examples:')}
   cn search "authentication"              Basic search
   cn search "api" --labels documentation  Filter by label
   cn search "error" --limit 5             Limit results
+  cn search "api" --updated-within 30d    Updated in last 30 days
+  cn search "security" --sort -updated_at Sort by most recently updated
+  cn search "" --stale 90d                Find stale content
   cn search index                         Build search index
   cn search index --force                 Rebuild index
   cn search status                        Check connection
+`);
+}
+
+function showMcpHelp(): void {
+  console.log(`
+${chalk.bold('cn mcp - Start MCP server for AI assistant integration')}
+
+${chalk.yellow('Usage:')}
+  cn mcp [path]
+
+${chalk.yellow('Description:')}
+  Launches an MCP (Model Context Protocol) server over stdio transport.
+  Exposes search and read_page tools for LLM clients like Claude Code.
+
+${chalk.yellow('Arguments:')}
+  path                      Path to space directory (default: current directory)
+
+${chalk.yellow('Options:')}
+  --help                    Show this help message
+
+${chalk.yellow('Prerequisites:')}
+  1. Meilisearch running locally
+  2. Index created with "cn search index"
+  3. Directory has .confluence.json
+
+${chalk.yellow('Configuration:')}
+  Add to ~/.claude/mcp.json:
+  {
+    "mcpServers": {
+      "confluence": {
+        "command": "cn",
+        "args": ["mcp", "/path/to/space"]
+      }
+    }
+  }
+
+${chalk.yellow('Examples:')}
+  cn mcp                    Start server for current directory
+  cn mcp ~/docs/wiki        Start server for specific space
 `);
 }
 
@@ -276,6 +327,7 @@ ${chalk.yellow('Commands:')}
   cn tree                   Display page hierarchy
   cn open                   Open page in browser
   cn search                 Search indexed content (requires Meilisearch)
+  cn mcp                    Start MCP server for AI assistant integration
 
 ${chalk.yellow('Global Options:')}
   --help, -h                Show help message
@@ -492,17 +544,54 @@ async function main(): Promise<void> {
           limit = Number.parseInt(subArgs[limitIndex + 1], 10);
         }
 
+        // Helper to get string option value
+        const getStringOption = (name: string): string | undefined => {
+          const idx = subArgs.indexOf(name);
+          return idx !== -1 && idx + 1 < subArgs.length ? subArgs[idx + 1] : undefined;
+        };
+
+        // Get date filter options
+        const createdAfter = getStringOption('--created-after');
+        const createdBefore = getStringOption('--created-before');
+        const updatedAfter = getStringOption('--updated-after');
+        const updatedBefore = getStringOption('--updated-before');
+        const createdWithin = getStringOption('--created-within');
+        const updatedWithin = getStringOption('--updated-within');
+        const stale = getStringOption('--stale');
+        const sort = getStringOption('--sort');
+
         await searchCommand({
           query,
           subcommand,
           labels: labels.length > 0 ? labels : undefined,
           author,
           limit,
+          createdAfter,
+          createdBefore,
+          updatedAfter,
+          updatedBefore,
+          createdWithin,
+          updatedWithin,
+          stale,
+          sort,
           force: subArgs.includes('--force'),
           dryRun: subArgs.includes('--dry-run'),
           json: subArgs.includes('--json'),
           xml: subArgs.includes('--xml'),
         });
+        break;
+      }
+
+      case 'mcp': {
+        if (args.includes('--help')) {
+          showMcpHelp();
+          process.exit(EXIT_CODES.SUCCESS);
+        }
+
+        // Get path (first non-flag argument)
+        const path = subArgs.find((arg) => !arg.startsWith('--'));
+
+        await mcpCommand({ path });
         break;
       }
 
