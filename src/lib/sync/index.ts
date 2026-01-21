@@ -1,8 +1,2 @@
-export {
-  SyncEngine,
-  type SyncChange,
-  type SyncDiff,
-  type SyncOptions,
-  type SyncProgressReporter,
-  type SyncResult,
-} from './sync-engine.js';
+export { SyncEngine } from './sync-engine.js';
+export type { SyncChange, SyncDiff, SyncOptions, SyncProgressReporter, SyncResult } from './types.js';

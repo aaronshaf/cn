@@ -51,6 +51,10 @@ Records of significant architectural decisions with context and rationale:
 
 - No emoticons in documentation
 
+## Git
+
+- Never use `--no-verify` when committing - always fix pre-commit hook issues first
+
 ## Tech Stack
 
 - **Runtime**: Bun 1.2.0+

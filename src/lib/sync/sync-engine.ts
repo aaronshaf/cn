@@ -2,9 +2,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, unlinkSync, writeFileSync }
 import { dirname, join } from 'node:path';
 import {
   ConfluenceClient,
-  isFolder,
   type ContentItem,
-  type Folder,
   type Page,
   type PageTreeNode,
   type User,
@@ -30,49 +28,9 @@ import {
 } from '../space-config.js';
 import { assertPathWithinDirectory, generateFolderPath, wouldGenerateReservedFilename } from './folder-path.js';
 import { syncSpecificPages } from './sync-specific.js';
+import type { SyncChange, SyncDiff, SyncOptions, SyncResult } from './types.js';
 
-/** Sync diff types */
-export interface SyncChange {
-  type: 'added' | 'modified' | 'deleted';
-  pageId: string;
-  title: string;
-  localPath?: string;
-}
-
-export interface SyncDiff {
-  added: SyncChange[];
-  modified: SyncChange[];
-  deleted: SyncChange[];
-}
-
-/**
- * Progress reporter for sync operations
- */
-export interface SyncProgressReporter {
-  onFetchStart?: () => void;
-  onFetchComplete?: (pageCount: number, folderCount: number) => void;
-  onDiffComplete?: (added: number, modified: number, deleted: number) => void;
-  onPageStart?: (index: number, total: number, title: string, type: 'added' | 'modified' | 'deleted') => void;
-  onPageComplete?: (index: number, total: number, title: string, localPath: string) => void;
-  onPageError?: (title: string, error: string) => void;
-}
-
-export interface SyncOptions {
-  dryRun?: boolean;
-  force?: boolean;
-  forcePages?: string[]; // Page IDs or local paths to force resync
-  depth?: number;
-  progress?: SyncProgressReporter;
-  signal?: { cancelled: boolean };
-}
-
-export interface SyncResult {
-  success: boolean;
-  changes: SyncDiff;
-  warnings: string[];
-  errors: string[];
-  cancelled?: boolean;
-}
+export type { SyncChange, SyncDiff, SyncOptions, SyncProgressReporter, SyncResult } from './types.js';
 
 /**
  * SyncEngine handles syncing Confluence spaces to local directories

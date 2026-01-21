@@ -112,8 +112,8 @@ export function sortByDependencies(
       // Only track dependencies that are also candidates
       if (candidatePaths.has(resolvedLink)) {
         // candidate.path depends on resolvedLink
-        dependsOn.get(candidate.path)!.add(resolvedLink);
-        dependedBy.get(resolvedLink)!.add(candidate.path);
+        dependsOn.get(candidate.path)?.add(resolvedLink);
+        dependedBy.get(resolvedLink)?.add(candidate.path);
       }
     }
   }
@@ -131,27 +131,36 @@ export function sortByDependencies(
 
   // Initialize in-degrees
   for (const candidate of candidates) {
-    const deps = dependsOn.get(candidate.path)!;
-    inDegree.set(candidate.path, deps.size);
+    const deps = dependsOn.get(candidate.path);
+    const depCount = deps?.size ?? 0;
+    inDegree.set(candidate.path, depCount);
 
-    if (deps.size === 0) {
+    if (depCount === 0) {
       queue.push(candidate.path);
     }
   }
 
   // Process queue
   while (queue.length > 0) {
-    const current = queue.shift()!;
-    sorted.push(candidateMap.get(current)!);
+    const current = queue.shift();
+    if (!current) break;
+
+    const candidate = candidateMap.get(current);
+    if (candidate) {
+      sorted.push(candidate);
+    }
 
     // For each file that depends on current, decrement its in-degree
-    const dependents = dependedBy.get(current)!;
-    for (const dependent of dependents) {
-      const newDegree = inDegree.get(dependent)! - 1;
-      inDegree.set(dependent, newDegree);
+    const dependents = dependedBy.get(current);
+    if (dependents) {
+      for (const dependent of dependents) {
+        const currentDegree = inDegree.get(dependent) ?? 0;
+        const newDegree = currentDegree - 1;
+        inDegree.set(dependent, newDegree);
 
-      if (newDegree === 0) {
-        queue.push(dependent);
+        if (newDegree === 0) {
+          queue.push(dependent);
+        }
       }
     }
   }
@@ -204,7 +213,10 @@ export function sortByDependencies(
     // Add remaining candidates to sorted output (in their original order)
     // so they still get pushed even if they're in cycles
     for (const path of remainingPaths) {
-      sorted.push(candidateMap.get(path)!);
+      const candidate = candidateMap.get(path);
+      if (candidate) {
+        sorted.push(candidate);
+      }
     }
   }
 
