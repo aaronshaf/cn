@@ -45,6 +45,8 @@ Records of significant architectural decisions with context and rationale:
 | `0018-confluence-folder-support.md` | V2 API folder discovery for hierarchy |
 | `0019-sync-modes.md` | Smart vs full sync modes |
 | `0020-bidirectional-sync-push.md` | Push command for bidirectional sync |
+| `0022-relative-path-link-handling.md` | Relative path link handling for inter-page links |
+| `0023-folder-push-workflow.md` | Automatic folder hierarchy creation during push |
 | `0024-frontmatter-source-of-truth.md` | Frontmatter as source of truth for sync state |
 
 ## Style

@@ -46,7 +46,6 @@
 | `cn status` | Check connection and sync status |
 | `cn tree` | Display space hierarchy as tree |
 | `cn open [page]` | Open page in browser |
-| `cn search` | Search indexed content (requires Meilisearch) |
 
 ## User Flows
 

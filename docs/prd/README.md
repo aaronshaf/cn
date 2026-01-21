@@ -12,4 +12,3 @@ Product specifications defining what the software should do, its goals, and desi
 | [architecture.md](architecture.md) | Technical architecture and component design |
 | [commands.md](commands.md) | CLI command specifications |
 | [data-model.md](data-model.md) | Data structures, schemas, file formats |
-| [search.md](search.md) | Search feature PRD (Meilisearch integration) |

@@ -151,7 +151,6 @@ function readSpaceConfig(directory: string): SpaceConfigWithState | null {
 | `push.ts` | Build cache for link resolution |
 | `status.ts` | Build cache for diff |
 | `tree.ts` | Work with simplified mappings |
-| `handlers.ts` (MCP) | Simplified page lookup |
 
 ### Performance Characteristics
 
