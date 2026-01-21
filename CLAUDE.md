@@ -19,6 +19,7 @@ Product specifications and design documents:
 | `commands.md` | CLI command specifications |
 | `data-model.md` | Data structures, schemas, file formats |
 | `search.md` | Search feature PRD (Meilisearch integration) |
+| `mcp.md` | MCP server PRD (Model Context Protocol integration) |
 
 ### `docs/adr/` - Architecture Decision Records
 
@@ -72,6 +73,7 @@ cn status    # Check connection and sync status
 cn tree      # Display page hierarchy
 cn open      # Open page in browser
 cn search    # Search indexed content (requires Meilisearch)
+cn mcp       # Start MCP server for AI assistant integration
 ```
 
 ## Key Files
