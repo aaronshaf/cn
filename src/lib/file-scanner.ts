@@ -5,7 +5,7 @@ import { parseMarkdown } from './markdown/index.js';
 /**
  * Directories to exclude from scanning
  */
-const EXCLUDED_DIRS = new Set([
+export const EXCLUDED_DIRS = new Set([
   'node_modules',
   '.git',
   'dist',
