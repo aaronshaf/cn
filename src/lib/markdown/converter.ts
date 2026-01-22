@@ -33,6 +33,19 @@ export class MarkdownConverter {
   }
 
   /**
+   * Escape HTML special characters for embedding in HTML attributes/content
+   * Used to safely embed CDATA content in pre/code elements
+   */
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
    * Add custom rules for Confluence-specific elements
    */
   private addCustomRules(): void {
@@ -304,8 +317,28 @@ export class MarkdownConverter {
     this.warnings = [];
 
     // Pre-process HTML to handle Confluence-specific namespace elements
-    const processedHtml = html
-      // Convert ac: namespace elements to standard HTML attributes
+    let processedHtml = html;
+
+    // Handle Confluence code macros specially - extract CDATA content before Turndown
+    // CDATA is not valid HTML5 and gets stripped during parsing, so we must handle it here
+    processedHtml = processedHtml.replace(
+      /<ac:structured-macro[^>]*ac:name="code"[^>]*>[\s\S]*?<ac:parameter[^>]*ac:name="language"[^>]*>([^<]*)<\/ac:parameter>[\s\S]*?<ac:plain-text-body><!\[CDATA\[([\s\S]*?)\]\]><\/ac:plain-text-body>[\s\S]*?<\/ac:structured-macro>/gi,
+      (_match, language, code) => {
+        const lang = (language || '').trim();
+        return `<pre><code class="language-${lang}">${this.escapeHtml(code)}</code></pre>`;
+      },
+    );
+
+    // Handle code macros without language parameter
+    processedHtml = processedHtml.replace(
+      /<ac:structured-macro[^>]*ac:name="code"[^>]*>[\s\S]*?<ac:plain-text-body><!\[CDATA\[([\s\S]*?)\]\]><\/ac:plain-text-body>[\s\S]*?<\/ac:structured-macro>/gi,
+      (_match, code) => {
+        return `<pre><code>${this.escapeHtml(code)}</code></pre>`;
+      },
+    );
+
+    processedHtml = processedHtml
+      // Convert remaining ac: namespace elements to standard HTML attributes
       .replace(/<ac:structured-macro/gi, '<div data-macro="true" data-macro-name')
       .replace(/<\/ac:structured-macro>/gi, '</div>')
       .replace(/<ac:parameter/gi, '<span data-param')

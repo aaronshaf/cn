@@ -290,6 +290,47 @@ describe('MarkdownConverter', () => {
     expect(markdown).toContain('const x = 1;');
   });
 
+  test('handles Confluence code macro with language', () => {
+    const converter = new MarkdownConverter();
+    const html = `<ac:structured-macro ac:name="code" ac:schema-version="1">
+      <ac:parameter ac:name="language">bash</ac:parameter>
+      <ac:plain-text-body><![CDATA[echo "hello world"
+ls -la]]></ac:plain-text-body>
+    </ac:structured-macro>`;
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain('```bash');
+    expect(markdown).toContain('echo "hello world"');
+    expect(markdown).toContain('ls -la');
+    expect(markdown).toContain('```');
+  });
+
+  test('handles Confluence code macro without language', () => {
+    const converter = new MarkdownConverter();
+    const html = `<ac:structured-macro ac:name="code" ac:schema-version="1">
+      <ac:plain-text-body><![CDATA[some plain code]]></ac:plain-text-body>
+    </ac:structured-macro>`;
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain('```');
+    expect(markdown).toContain('some plain code');
+  });
+
+  test('handles Confluence code macro with special characters', () => {
+    const converter = new MarkdownConverter();
+    const html = `<ac:structured-macro ac:name="code" ac:schema-version="1">
+      <ac:parameter ac:name="language">javascript</ac:parameter>
+      <ac:plain-text-body><![CDATA[if (x < 5 && y > 3) {
+  console.log("test");
+}]]></ac:plain-text-body>
+    </ac:structured-macro>`;
+    const markdown = converter.convert(html);
+
+    expect(markdown).toContain('```javascript');
+    expect(markdown).toContain('if (x < 5 && y > 3)');
+    expect(markdown).toContain('console.log("test")');
+  });
+
   test('converts tables with GFM plugin', () => {
     const converter = new MarkdownConverter();
     const html = `
