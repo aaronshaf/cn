@@ -1,56 +1,11 @@
 import chalk from 'chalk';
-import ora, { type Ora } from 'ora';
+import ora from 'ora';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ConfigManager } from '../../lib/config.js';
 import { EXIT_CODES } from '../../lib/errors.js';
-import { SyncEngine, type SyncProgressReporter } from '../../lib/sync/index.js';
-
-/**
- * Create a progress reporter for the initial pull during clone
- */
-function createProgressReporter(): SyncProgressReporter {
-  let spinner: Ora | undefined;
-
-  return {
-    onFetchStart: () => {
-      spinner = ora({
-        text: 'Fetching pages from Confluence...',
-        hideCursor: false,
-        discardStdin: false,
-      }).start();
-    },
-    onFetchComplete: (pageCount, folderCount) => {
-      const folderText = folderCount > 0 ? ` and ${folderCount} folders` : '';
-      spinner?.succeed(`Found ${pageCount} pages${folderText}`);
-      spinner = undefined;
-    },
-    onDiffComplete: (added, modified, deleted) => {
-      const total = added + modified + deleted;
-      if (total === 0) {
-        console.log(chalk.green('  Already up to date'));
-      } else {
-        const parts = [];
-        if (added > 0) parts.push(chalk.green(`${added} new`));
-        if (modified > 0) parts.push(chalk.yellow(`${modified} modified`));
-        if (deleted > 0) parts.push(chalk.red(`${deleted} deleted`));
-        console.log(`  ${parts.join(', ')}`);
-        console.log('');
-      }
-    },
-    onPageStart: (_index, _total, _title, _type) => {
-      // No-op - we show progress on complete only
-    },
-    onPageComplete: (index, total, _title, localPath) => {
-      const icon = localPath ? chalk.green('✓') : chalk.red('×');
-      const progress = chalk.gray(`(${index}/${total})`);
-      console.log(`  ${icon} ${progress} ${localPath || 'deleted'}`);
-    },
-    onPageError: (title, error) => {
-      console.log(`  ${chalk.red('✗')} ${title}: ${error}`);
-    },
-  };
-}
+import { SyncEngine } from '../../lib/sync/index.js';
+import { createProgressReporter } from '../utils/progress-reporter.js';
 
 export interface CloneCommandOptions {
   spaceKey: string;
@@ -95,49 +50,61 @@ export async function cloneCommand(options: CloneCommandOptions): Promise<void> 
     const spaceConfig = await syncEngine.initSync(fullPath, options.spaceKey);
     spinner.succeed(`Cloned space "${spaceConfig.spaceName}" (${spaceConfig.spaceKey}) into ${targetDir}`);
 
-    // Perform initial pull
-    console.log('');
-    const progressReporter = createProgressReporter();
-    const result = await syncEngine.sync(fullPath, {
-      progress: progressReporter,
-    });
-
-    // Show warnings
-    if (result.warnings.length > 0) {
+    // Perform initial pull - wrapped separately so init failures clean up but sync failures don't
+    let syncFailed = false;
+    try {
       console.log('');
-      console.log(chalk.yellow('Warnings:'));
-      for (const warning of result.warnings) {
-        console.log(chalk.yellow(`  ! ${warning}`));
+      const progressReporter = createProgressReporter();
+      const result = await syncEngine.sync(fullPath, {
+        progress: progressReporter,
+      });
+
+      // Show warnings
+      if (result.warnings.length > 0) {
+        console.log('');
+        console.log(chalk.yellow('Warnings:'));
+        for (const warning of result.warnings) {
+          console.log(chalk.yellow(`  ! ${warning}`));
+        }
       }
-    }
 
-    // Show errors
-    if (result.errors.length > 0) {
-      console.log('');
-      console.log(chalk.red('Errors:'));
-      for (const error of result.errors) {
-        console.log(chalk.red(`  x ${error}`));
+      // Show errors
+      if (result.errors.length > 0) {
+        console.log('');
+        console.log(chalk.red('Errors:'));
+        for (const error of result.errors) {
+          console.log(chalk.red(`  x ${error}`));
+        }
+        syncFailed = true;
       }
-    }
 
-    // Final summary
-    const { added, modified, deleted } = result.changes;
-    const total = added.length + modified.length + deleted.length;
-    if (total > 0) {
+      // Final summary
+      const { added, modified, deleted } = result.changes;
+      const total = added.length + modified.length + deleted.length;
+      if (total > 0) {
+        console.log('');
+        const parts = [];
+        if (added.length > 0) parts.push(`${added.length} added`);
+        if (modified.length > 0) parts.push(`${modified.length} modified`);
+        if (deleted.length > 0) parts.push(`${deleted.length} deleted`);
+        console.log(chalk.green(`✓ Clone complete: ${parts.join(', ')}`));
+      }
+    } catch (syncError) {
+      // Sync failed but clone succeeded - don't clean up, provide recovery guidance
       console.log('');
-      const parts = [];
-      if (added.length > 0) parts.push(`${added.length} added`);
-      if (modified.length > 0) parts.push(`${modified.length} modified`);
-      if (deleted.length > 0) parts.push(`${deleted.length} deleted`);
-      console.log(chalk.green(`✓ Clone complete: ${parts.join(', ')}`));
+      console.log(chalk.yellow('Initial pull failed. You can retry with:'));
+      syncFailed = true;
     }
 
     console.log('');
     console.log(chalk.gray(`  cd ${targetDir}`));
+    if (syncFailed) {
+      console.log(chalk.gray('  cn pull'));
+    }
   } catch (error) {
     spinner.fail('Failed to clone space');
 
-    // Clean up directory on failure
+    // Clean up directory on failure (only for init failures, not sync failures)
     if (existsSync(fullPath)) {
       try {
         rmSync(fullPath, { recursive: true });

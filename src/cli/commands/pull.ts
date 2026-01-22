@@ -1,56 +1,10 @@
 import chalk from 'chalk';
-import ora, { type Ora } from 'ora';
 import { ConfigManager } from '../../lib/config.js';
 import { EXIT_CODES } from '../../lib/errors.js';
 import { getFormatter } from '../../lib/formatters.js';
 import { readSpaceConfig, hasSpaceConfig } from '../../lib/space-config.js';
-import { SyncEngine, type SyncProgressReporter } from '../../lib/sync/index.js';
-
-/**
- * Create a progress reporter for pull operations
- */
-function createProgressReporter(): SyncProgressReporter {
-  let spinner: Ora | undefined;
-
-  return {
-    onFetchStart: () => {
-      spinner = ora({
-        text: 'Fetching pages from Confluence...',
-        hideCursor: false,
-        discardStdin: false,
-      }).start();
-    },
-    onFetchComplete: (pageCount, folderCount) => {
-      const folderText = folderCount > 0 ? ` and ${folderCount} folders` : '';
-      spinner?.succeed(`Found ${pageCount} pages${folderText}`);
-      spinner = undefined;
-    },
-    onDiffComplete: (added, modified, deleted) => {
-      const total = added + modified + deleted;
-      if (total === 0) {
-        console.log(chalk.green('  Already up to date'));
-      } else {
-        const parts = [];
-        if (added > 0) parts.push(chalk.green(`${added} new`));
-        if (modified > 0) parts.push(chalk.yellow(`${modified} modified`));
-        if (deleted > 0) parts.push(chalk.red(`${deleted} deleted`));
-        console.log(`  ${parts.join(', ')}`);
-        console.log('');
-      }
-    },
-    onPageStart: (_index, _total, _title, _type) => {
-      // No-op - we show progress on complete only
-    },
-    onPageComplete: (index, total, _title, localPath) => {
-      const icon = localPath ? chalk.green('✓') : chalk.red('×');
-      const progress = chalk.gray(`(${index}/${total})`);
-      console.log(`  ${icon} ${progress} ${localPath || 'deleted'}`);
-    },
-    onPageError: (title, error) => {
-      console.log(`  ${chalk.red('✗')} ${title}: ${error}`);
-    },
-  };
-}
+import { SyncEngine } from '../../lib/sync/index.js';
+import { createProgressReporter } from '../utils/progress-reporter.js';
 
 export interface PullCommandOptions {
   dryRun?: boolean;
