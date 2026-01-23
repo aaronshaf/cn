@@ -99,6 +99,7 @@ interface PageFrontmatter {
   // Hierarchy
   parent_id: string | null
   parent_title: string | null
+  child_count?: number        // Number of direct child pages (optional)
 
   // Author info
   author_id: string
@@ -129,6 +130,7 @@ updated_at: "2024-01-14T08:00:00Z"
 version: 5
 parent_id: "page-root-001"
 parent_title: "Home"
+child_count: 3
 author_id: "user-123"
 author_name: "John Doe"
 author_email: "john.doe@example.com"
@@ -146,6 +148,22 @@ synced_at: "2024-01-15T10:30:00Z"
 
 Page content here...
 ```
+
+### Child Count
+
+The `child_count` field tracks the number of direct child pages (not including folders or nested descendants).
+
+**Behavior:**
+- **Full sync** (`cn pull`): Computed from the complete page hierarchy and explicitly set
+- **Specific-page sync** (`cn pull <file>`): Field is `undefined` (requires full sync for accurate count)
+- **Old synced files**: May not have `child_count` field (backward compatible)
+- **Leaf pages**: `child_count: 0`
+- **Pages with children**: `child_count: N` where N > 0
+
+**Use cases:**
+- Identify hub pages with many children (high child_count values)
+- Find leaf pages vs parent pages
+- Track content organization patterns
 
 ### Title and H1 Heading
 

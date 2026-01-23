@@ -178,6 +178,7 @@ export async function syncSpecificPages(
         const localPath = change.localPath ?? '';
 
         // Convert to markdown with link conversion (ADR-0022)
+        // Note: childCount is undefined for specific-page syncs (requires full sync to compute)
         const { markdown, warnings } = converter.convertPage(
           fullPage,
           labels,
@@ -187,6 +188,7 @@ export async function syncSpecificPages(
           lastModifier,
           localPath,
           pageLookupMap,
+          undefined, // childCount not available in specific-page sync
         );
         result.warnings.push(...warnings.map((w) => `${fullPage.title}: ${w}`));
 

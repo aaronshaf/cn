@@ -397,6 +397,7 @@ export class MarkdownConverter {
     lastModifier?: User,
     currentPagePath?: string,
     pageLookupMap?: PageLookupMap,
+    childCount?: number,
   ): { markdown: string; warnings: string[] } {
     // Set context for image URL generation and link conversion
     this.currentBaseUrl = baseUrl || '';
@@ -408,7 +409,7 @@ export class MarkdownConverter {
     const bodyContent = this.convert(html);
     // Add H1 with page title at the start of content (Confluence shows title separately)
     const content = `# ${page.title}\n\n${bodyContent}`;
-    const frontmatter = createFrontmatter(page, labels, parentTitle, baseUrl, author, lastModifier);
+    const frontmatter = createFrontmatter(page, labels, parentTitle, baseUrl, author, lastModifier, childCount);
     const markdown = serializeMarkdown(frontmatter, content);
 
     return {

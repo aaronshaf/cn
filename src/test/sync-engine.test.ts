@@ -7,6 +7,7 @@ import { SyncEngine } from '../lib/sync/sync-engine.js';
 import { writeSpaceConfig, type SpaceConfigWithState } from '../lib/space-config.js';
 import { server } from './setup-msw.js';
 import { createValidPage, createValidSpace } from './msw-schema-validation.js';
+import { parseMarkdown } from '../lib/markdown/frontmatter.js';
 
 const testConfig = {
   confluenceUrl: 'https://test.atlassian.net',
@@ -383,6 +384,103 @@ describe('SyncEngine', () => {
       // Should have warnings about skipped pages (check for "reserved filename" in the message)
       expect(result.warnings.some((w) => w.includes('reserved filename') && w.includes('Claude'))).toBe(true);
       expect(result.warnings.some((w) => w.includes('reserved filename') && w.includes('Agents'))).toBe(true);
+    });
+
+    test('includes child_count in frontmatter for synced pages', async () => {
+      // Set up page hierarchy:
+      // Root (page-root) - 2 children
+      //   ├─ Child 1 (page-child1) - 0 children
+      //   └─ Child 2 (page-child2) - 1 child
+      //       └─ Grandchild (page-grandchild) - 0 children
+      server.use(
+        http.get('*/wiki/api/v2/spaces/:spaceId/pages', () => {
+          return HttpResponse.json({
+            results: [
+              createValidPage({
+                id: 'page-root',
+                title: 'Root Page',
+                spaceId: 'space-123',
+                body: '<p>Root content</p>',
+              }),
+              createValidPage({
+                id: 'page-child1',
+                title: 'Child 1',
+                spaceId: 'space-123',
+                parentId: 'page-root',
+                body: '<p>Child 1 content</p>',
+              }),
+              createValidPage({
+                id: 'page-child2',
+                title: 'Child 2',
+                spaceId: 'space-123',
+                parentId: 'page-root',
+                body: '<p>Child 2 content</p>',
+              }),
+              createValidPage({
+                id: 'page-grandchild',
+                title: 'Grandchild',
+                spaceId: 'space-123',
+                parentId: 'page-child2',
+                body: '<p>Grandchild content</p>',
+              }),
+            ],
+          });
+        }),
+        http.get('*/wiki/api/v2/pages/:pageId', ({ params }) => {
+          const pageId = params.pageId as string;
+          const pageData: Record<string, { title: string; parentId?: string }> = {
+            'page-root': { title: 'Root Page' },
+            'page-child1': { title: 'Child 1', parentId: 'page-root' },
+            'page-child2': { title: 'Child 2', parentId: 'page-root' },
+            'page-grandchild': { title: 'Grandchild', parentId: 'page-child2' },
+          };
+          const data = pageData[pageId] || { title: 'Unknown' };
+          return HttpResponse.json(
+            createValidPage({
+              id: pageId,
+              title: data.title,
+              spaceId: 'space-123',
+              parentId: data.parentId,
+              body: `<p>${data.title} content</p>`,
+            }),
+          );
+        }),
+      );
+
+      // Set up space config
+      const spaceConfig: SpaceConfigWithState = {
+        spaceKey: 'TEST',
+        spaceId: 'space-123',
+        spaceName: 'Test Space',
+        pages: {},
+      };
+      writeSpaceConfig(testDir, spaceConfig);
+
+      const engine = new SyncEngine(testConfig);
+      const result = await engine.sync(testDir);
+
+      expect(result.success).toBe(true);
+      expect(result.changes.added).toHaveLength(4);
+
+      // Verify child_count in synced files
+      const rootContent = readFileSync(join(testDir, 'README.md'), 'utf-8');
+      const child1Content = readFileSync(join(testDir, 'child-1.md'), 'utf-8');
+      const child2Content = readFileSync(join(testDir, 'child-2/README.md'), 'utf-8');
+      const grandchildContent = readFileSync(join(testDir, 'child-2/grandchild.md'), 'utf-8');
+
+      const rootFrontmatter = parseMarkdown(rootContent).frontmatter;
+      const child1Frontmatter = parseMarkdown(child1Content).frontmatter;
+      const child2Frontmatter = parseMarkdown(child2Content).frontmatter;
+      const grandchildFrontmatter = parseMarkdown(grandchildContent).frontmatter;
+
+      // Root has 2 direct children
+      expect(rootFrontmatter.child_count).toBe(2);
+      // Child 1 has 0 children (leaf page)
+      expect(child1Frontmatter.child_count).toBe(0);
+      // Child 2 has 1 child
+      expect(child2Frontmatter.child_count).toBe(1);
+      // Grandchild has 0 children (leaf page)
+      expect(grandchildFrontmatter.child_count).toBe(0);
     });
   });
 });

@@ -14,6 +14,7 @@ export interface PageFrontmatter {
   version?: number;
   parent_id?: string | null;
   parent_title?: string;
+  child_count?: number;
   author_id?: string;
   author_name?: string;
   author_email?: string;
@@ -36,6 +37,7 @@ export function createFrontmatter(
   baseUrl?: string,
   author?: User,
   lastModifier?: User,
+  childCount?: number,
 ): PageFrontmatter {
   const webui = page._links?.webui;
   const url = webui && baseUrl ? `${baseUrl}/wiki${webui}` : undefined;
@@ -48,6 +50,7 @@ export function createFrontmatter(
     version: page.version?.number,
     parent_id: page.parentId,
     parent_title: parentTitle,
+    child_count: childCount,
     author_id: page.authorId,
     author_name: author?.displayName,
     author_email: author?.email,

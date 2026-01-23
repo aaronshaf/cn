@@ -398,6 +398,14 @@ export class SyncEngine {
       // Enable duplicate title warnings during sync
       const pageLookupMap = buildPageLookupMapFromCache(pageState, true);
 
+      // Pre-compute child counts for all pages (O(n) instead of O(n^2))
+      const childCountMap = new Map<string, number>();
+      for (const p of remotePages) {
+        if (p.parentId) {
+          childCountMap.set(p.parentId, (childCountMap.get(p.parentId) || 0) + 1);
+        }
+      }
+
       // Calculate total changes for progress
       const totalChanges = diff.added.length + diff.modified.length + diff.deleted.length;
       let currentChange = 0;
@@ -442,6 +450,9 @@ export class SyncEngine {
           const localPath = this.generateLocalPath(page, remotePages, contentMap, existingPaths, homepageId);
           (change as SyncChange).localPath = localPath;
 
+          // Get child count from pre-computed map (defaults to 0 if no children)
+          const childCount = childCountMap.get(page.id) ?? 0;
+
           // Convert to markdown with link conversion (ADR-0022)
           const { markdown, warnings } = this.converter.convertPage(
             fullPage,
@@ -452,6 +463,7 @@ export class SyncEngine {
             lastModifier,
             localPath,
             pageLookupMap,
+            childCount,
           );
           result.warnings.push(...warnings.map((w) => `${page.title}: ${w}`));
 
@@ -518,6 +530,9 @@ export class SyncEngine {
           const newPath = this.generateLocalPath(page, remotePages, contentMap, existingPaths, homepageId);
           const oldPath = change.localPath;
 
+          // Get child count from pre-computed map (defaults to 0 if no children)
+          const childCount = childCountMap.get(page.id) ?? 0;
+
           // Convert to markdown with link conversion (ADR-0022)
           // Use newPath for link conversion since that's where the file will be
           const { markdown, warnings } = this.converter.convertPage(
@@ -529,6 +544,7 @@ export class SyncEngine {
             lastModifier,
             newPath,
             pageLookupMap,
+            childCount,
           );
           result.warnings.push(...warnings.map((w) => `${page.title}: ${w}`));
 

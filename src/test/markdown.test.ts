@@ -111,6 +111,42 @@ describe('createFrontmatter', () => {
 
     expect(frontmatter.labels).toEqual(['important', 'draft']);
   });
+
+  test('includes child_count when provided', () => {
+    const page = {
+      id: 'page-123',
+      title: 'Test Page',
+      spaceId: 'space-123',
+    };
+
+    const frontmatter = createFrontmatter(page, [], undefined, undefined, undefined, undefined, 5);
+
+    expect(frontmatter.child_count).toBe(5);
+  });
+
+  test('child_count is undefined when not provided', () => {
+    const page = {
+      id: 'page-123',
+      title: 'Test Page',
+      spaceId: 'space-123',
+    };
+
+    const frontmatter = createFrontmatter(page, []);
+
+    expect(frontmatter.child_count).toBeUndefined();
+  });
+
+  test('child_count can be zero', () => {
+    const page = {
+      id: 'page-123',
+      title: 'Test Page',
+      spaceId: 'space-123',
+    };
+
+    const frontmatter = createFrontmatter(page, [], undefined, undefined, undefined, undefined, 0);
+
+    expect(frontmatter.child_count).toBe(0);
+  });
 });
 
 describe('serializeMarkdown and parseMarkdown', () => {
