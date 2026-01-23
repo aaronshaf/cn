@@ -116,6 +116,9 @@ export class SyncEngine {
     pageState?: PageStateCache,
     forcePageIds?: Set<string>,
   ): SyncDiff {
+    // Filter out archived pages - they should be treated as deleted locally
+    const currentPages = remotePages.filter((page) => page.status === 'current');
+
     const diff: SyncDiff = {
       added: [],
       modified: [],
@@ -123,10 +126,10 @@ export class SyncEngine {
     };
 
     const localPageMappings = localConfig?.pages || {};
-    const remotePageIds = new Set(remotePages.map((p) => p.id));
+    const remotePageIds = new Set(currentPages.map((p) => p.id));
 
     // Find added and modified pages
-    for (const page of remotePages) {
+    for (const page of currentPages) {
       const localPath = localPageMappings[page.id];
       const isForced = forcePageIds?.has(page.id);
 

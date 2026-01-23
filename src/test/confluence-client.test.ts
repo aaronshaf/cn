@@ -179,6 +179,34 @@ describe('ConfluenceClient', () => {
 
       expect(pages).toBeArray();
     });
+
+    test('filters out archived pages', async () => {
+      server.use(
+        http.get('*/wiki/api/v2/spaces/:spaceId/pages', () => {
+          return HttpResponse.json({
+            results: [
+              createValidPage({ id: 'page-1', title: 'Current Page 1', spaceId: 'space-123' }),
+              {
+                ...createValidPage({ id: 'page-2', title: 'Archived Page', spaceId: 'space-123' }),
+                status: 'archived',
+              },
+              createValidPage({ id: 'page-3', title: 'Current Page 2', spaceId: 'space-123' }),
+              { ...createValidPage({ id: 'page-4', title: 'Trashed Page', spaceId: 'space-123' }), status: 'trashed' },
+              { ...createValidPage({ id: 'page-5', title: 'Draft Page', spaceId: 'space-123' }), status: 'draft' },
+            ],
+          });
+        }),
+      );
+
+      const client = new ConfluenceClient(testConfig);
+      const pages = await client.getAllPagesInSpace('space-123');
+
+      // Only current pages should be returned (filters out archived, trashed, and draft)
+      expect(pages).toHaveLength(2);
+      expect(pages[0].id).toBe('page-1');
+      expect(pages[1].id).toBe('page-3');
+      expect(pages.every((p) => p.status === 'current')).toBe(true);
+    });
   });
 
   describe('getLabels', () => {

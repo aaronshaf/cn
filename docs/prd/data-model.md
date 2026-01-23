@@ -192,7 +192,7 @@ interface ConfluenceSpace {
 ```typescript
 interface ConfluencePage {
   id: string
-  status: "current" | "trashed" | "draft"
+  status: "current" | "trashed" | "draft" | "archived"
   title: string
   spaceId: string
   parentId: string | null
@@ -220,6 +220,8 @@ interface ConfluencePage {
   }
 }
 ```
+
+**Note on page status filtering**: Only pages with `status: "current"` are synchronized. Pages with other statuses (`archived`, `trashed`, `draft`) are filtered out and treated as deleted locally during sync operations. See ADR-0025 for rationale.
 
 ---
 

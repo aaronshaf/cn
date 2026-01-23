@@ -235,6 +235,7 @@ export class ConfluenceClient {
 
   /**
    * Get all pages in a space (Effect version)
+   * Note: Returns pages with all statuses. Use getAllPagesInSpace for filtered results (current only).
    */
   getPagesInSpaceEffect(
     spaceId: string,
@@ -250,6 +251,7 @@ export class ConfluenceClient {
 
   /**
    * Get all pages in a space (async version)
+   * Note: Returns pages with all statuses. Use getAllPagesInSpace for filtered results (current only).
    */
   async getPagesInSpace(spaceId: string, limit = 25, cursor?: string): Promise<PagesResponse> {
     return Effect.runPromise(this.getPagesInSpaceEffect(spaceId, limit, cursor));
@@ -257,6 +259,7 @@ export class ConfluenceClient {
 
   /**
    * Get all pages in a space with pagination (async version)
+   * Only returns pages with status='current' (excludes archived and trashed pages)
    */
   async getAllPagesInSpace(spaceId: string): Promise<Page[]> {
     const allPages: Page[] = [];
@@ -264,7 +267,8 @@ export class ConfluenceClient {
 
     do {
       const response = await this.getPagesInSpace(spaceId, 100, cursor);
-      allPages.push(...response.results);
+      // Filter out archived and trashed pages - only include current pages
+      allPages.push(...response.results.filter((page) => page.status === 'current'));
 
       // Extract cursor from next link if present
       const nextLink = response._links?.next;

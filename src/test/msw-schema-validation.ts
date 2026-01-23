@@ -96,6 +96,7 @@ export function createValidPage(
   id: string;
   title: string;
   spaceId: string;
+  status: string;
   parentId?: string | null;
   authorId?: string;
   version?: { number: number; createdAt?: string };
@@ -105,6 +106,7 @@ export function createValidPage(
     id: overrides.id || 'page-123',
     title: overrides.title || 'Test Page',
     spaceId: overrides.spaceId || 'space-123',
+    status: 'current',
     parentId: overrides.parentId,
     authorId: overrides.authorId || 'user-123',
     version: {

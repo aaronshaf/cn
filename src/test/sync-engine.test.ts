@@ -68,10 +68,10 @@ describe('SyncEngine', () => {
   describe('buildPageTree', () => {
     test('builds tree from flat pages', () => {
       const pages = [
-        { id: 'page-1', title: 'Home', spaceId: 'space-123', parentId: null },
-        { id: 'page-2', title: 'Getting Started', spaceId: 'space-123', parentId: 'page-1' },
-        { id: 'page-3', title: 'API Reference', spaceId: 'space-123', parentId: 'page-1' },
-        { id: 'page-4', title: 'Installation', spaceId: 'space-123', parentId: 'page-2' },
+        { id: 'page-1', title: 'Home', spaceId: 'space-123', status: 'current', parentId: null },
+        { id: 'page-2', title: 'Getting Started', spaceId: 'space-123', status: 'current', parentId: 'page-1' },
+        { id: 'page-3', title: 'API Reference', spaceId: 'space-123', status: 'current', parentId: 'page-1' },
+        { id: 'page-4', title: 'Installation', spaceId: 'space-123', status: 'current', parentId: 'page-2' },
       ];
 
       const engine = new SyncEngine(testConfig);
@@ -84,8 +84,8 @@ describe('SyncEngine', () => {
 
     test('handles orphan pages', () => {
       const pages = [
-        { id: 'page-1', title: 'Page 1', spaceId: 'space-123', parentId: 'missing-parent' },
-        { id: 'page-2', title: 'Page 2', spaceId: 'space-123', parentId: null },
+        { id: 'page-1', title: 'Page 1', spaceId: 'space-123', status: 'current', parentId: 'missing-parent' },
+        { id: 'page-2', title: 'Page 2', spaceId: 'space-123', status: 'current', parentId: null },
       ];
 
       const engine = new SyncEngine(testConfig);
@@ -98,8 +98,8 @@ describe('SyncEngine', () => {
   describe('computeDiff', () => {
     test('detects added pages', () => {
       const remotePages = [
-        { id: 'page-1', title: 'Page 1', spaceId: 'space-123', version: { number: 1 } },
-        { id: 'page-2', title: 'Page 2', spaceId: 'space-123', version: { number: 1 } },
+        { id: 'page-1', title: 'Page 1', spaceId: 'space-123', status: 'current', version: { number: 1 } },
+        { id: 'page-2', title: 'Page 2', spaceId: 'space-123', status: 'current', version: { number: 1 } },
       ];
 
       const localConfig: SpaceConfigWithState = {
@@ -118,7 +118,9 @@ describe('SyncEngine', () => {
     });
 
     test('detects modified pages', () => {
-      const remotePages = [{ id: 'page-1', title: 'Page 1', spaceId: 'space-123', version: { number: 2 } }];
+      const remotePages = [
+        { id: 'page-1', title: 'Page 1', spaceId: 'space-123', status: 'current', version: { number: 2 } },
+      ];
 
       // Per ADR-0024: pages is now Record<string, string> (pageId -> localPath)
       const localConfig: SpaceConfigWithState = {
@@ -161,7 +163,9 @@ describe('SyncEngine', () => {
     });
 
     test('handles null localConfig', () => {
-      const remotePages = [{ id: 'page-1', title: 'Page 1', spaceId: 'space-123', version: { number: 1 } }];
+      const remotePages = [
+        { id: 'page-1', title: 'Page 1', spaceId: 'space-123', status: 'current', version: { number: 1 } },
+      ];
 
       const engine = new SyncEngine(testConfig);
       const diff = engine.computeDiff(remotePages, null);
@@ -169,6 +173,71 @@ describe('SyncEngine', () => {
       expect(diff.added).toHaveLength(1);
       expect(diff.modified).toHaveLength(0);
       expect(diff.deleted).toHaveLength(0);
+    });
+
+    test('filters out archived pages from remote', () => {
+      const remotePages = [
+        { id: 'page-1', title: 'Current Page', spaceId: 'space-123', status: 'current', version: { number: 1 } },
+        { id: 'page-2', title: 'Archived Page', spaceId: 'space-123', status: 'archived', version: { number: 1 } },
+        { id: 'page-3', title: 'Another Current', spaceId: 'space-123', status: 'current', version: { number: 1 } },
+        { id: 'page-4', title: 'Draft Page', spaceId: 'space-123', status: 'draft', version: { number: 1 } },
+        { id: 'page-5', title: 'Trashed Page', spaceId: 'space-123', status: 'trashed', version: { number: 1 } },
+      ];
+
+      const localConfig: SpaceConfigWithState = {
+        spaceKey: 'TEST',
+        spaceId: 'space-123',
+        spaceName: 'Test Space',
+        pages: {},
+      };
+
+      const engine = new SyncEngine(testConfig);
+      const diff = engine.computeDiff(remotePages, localConfig);
+
+      // Only the 2 current pages should be added (filters out archived, draft, and trashed)
+      expect(diff.added).toHaveLength(2);
+      expect(diff.added[0].pageId).toBe('page-1');
+      expect(diff.added[1].pageId).toBe('page-3');
+      expect(diff.modified).toHaveLength(0);
+      expect(diff.deleted).toHaveLength(0);
+    });
+
+    test('treats locally-synced archived pages as deleted', () => {
+      const remotePages = [
+        { id: 'page-1', title: 'Current Page', spaceId: 'space-123', status: 'current', version: { number: 1 } },
+        { id: 'page-2', title: 'Archived Page', spaceId: 'space-123', status: 'archived', version: { number: 1 } },
+      ];
+
+      const localConfig: SpaceConfigWithState = {
+        spaceKey: 'TEST',
+        spaceId: 'space-123',
+        spaceName: 'Test Space',
+        pages: {
+          'page-1': 'page-1.md',
+          'page-2': 'page-2.md', // This page is archived remotely
+        },
+      };
+
+      // Provide PageStateCache so page-1 is not seen as modified
+      const pageState = {
+        pages: new Map([
+          ['page-1', { pageId: 'page-1', localPath: 'page-1.md', title: 'Current Page', version: 1 }],
+          ['page-2', { pageId: 'page-2', localPath: 'page-2.md', title: 'Archived Page', version: 1 }],
+        ]),
+        pathToPageId: new Map([
+          ['page-1.md', 'page-1'],
+          ['page-2.md', 'page-2'],
+        ]),
+      };
+
+      const engine = new SyncEngine(testConfig);
+      const diff = engine.computeDiff(remotePages, localConfig, pageState);
+
+      expect(diff.added).toHaveLength(0);
+      expect(diff.modified).toHaveLength(0);
+      // page-2 should be detected as deleted because it's archived
+      expect(diff.deleted).toHaveLength(1);
+      expect(diff.deleted[0].pageId).toBe('page-2');
     });
   });
 

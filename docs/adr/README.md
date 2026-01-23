@@ -29,3 +29,4 @@ Records of significant architectural decisions with context and rationale. Each 
 | [0022](0022-relative-path-link-handling.md) | Relative path link handling for inter-page links |
 | [0023](0023-folder-push-workflow.md) | Automatic folder hierarchy creation during push |
 | [0024](0024-frontmatter-source-of-truth.md) | Frontmatter as source of truth for sync state |
+| [0025](0025-filter-archived-pages.md) | Archived pages filtered and treated as deleted |
