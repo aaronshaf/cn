@@ -33,7 +33,6 @@ import {
   type Folder,
   type Label,
   type LabelsResponse,
-  type MovePageResponse,
   type Page,
   type PagesResponse,
   type Space,
@@ -603,18 +602,14 @@ export class ConfluenceClient {
     pageId: string,
     targetId: string,
     position: 'append' | 'prepend' = 'append',
-  ): Effect.Effect<MovePageResponse, ApiError | AuthError | NetworkError | RateLimitError | PageNotFoundError> {
+  ): Effect.Effect<void, ApiError | AuthError | NetworkError | RateLimitError | PageNotFoundError> {
     return movePageEffectFn(this.baseUrl, this.authHeader, pageId, targetId, position);
   }
 
   /**
    * Move a page to a new parent (async version)
    */
-  async movePage(
-    pageId: string,
-    targetId: string,
-    position: 'append' | 'prepend' = 'append',
-  ): Promise<MovePageResponse> {
+  async movePage(pageId: string, targetId: string, position: 'append' | 'prepend' = 'append'): Promise<void> {
     return Effect.runPromise(this.movePageEffect(pageId, targetId, position));
   }
 

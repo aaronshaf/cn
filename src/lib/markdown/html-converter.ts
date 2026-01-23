@@ -301,16 +301,20 @@ export class HtmlConverter {
   }
 
   /**
+   * Strip @ prefix from user mentions, converting @username to just username
+   * Confluence requires account IDs for proper mentions, so we render as plain text
+   * Avoids email addresses (user@example.com) by checking preceding character
+   */
+  private stripMentionPrefix(markdown: string): string {
+    // Match @username at word boundaries, but not in email addresses
+    // Pattern: @ preceded by start-of-line or whitespace/punctuation (not alphanumeric or dot)
+    return markdown.replace(/(?<=^|[^a-zA-Z0-9.])@([a-zA-Z0-9_-]+)/gm, '$1');
+  }
+
+  /**
    * Detect unsupported markdown features and add warnings
    */
   private detectUnsupportedFeatures(markdown: string): void {
-    // Check for @mentions (account IDs)
-    // Match @username at word boundaries, but not in email addresses (user@example.com)
-    // Pattern: @ preceded by start-of-line or non-alphanumeric (excludes dots to avoid emails)
-    if (/(?:^|[^a-zA-Z0-9.])@[a-zA-Z0-9_-]+/m.test(markdown)) {
-      this.warnings.push('User mentions (@username) will render as plain text. Use Confluence UI to add mentions.');
-    }
-
     // Check for task lists with checkboxes
     if (/^\s*-\s*\[[x ]\]/im.test(markdown)) {
       this.warnings.push('Task list checkboxes (- [x]) will be converted to regular list items.');
@@ -364,14 +368,17 @@ export class HtmlConverter {
     this.spaceKey = spaceKey || '';
     this.pageLookupMap = pageLookupMap || null;
 
+    // Preprocess: strip @ from mentions (Confluence requires account IDs for real mentions)
+    const preprocessedMarkdown = this.stripMentionPrefix(markdown);
+
     // Detect unsupported features before conversion
-    this.detectUnsupportedFeatures(markdown);
+    this.detectUnsupportedFeatures(preprocessedMarkdown);
 
     // Create marked instance with custom renderer for this conversion
     const markedInstance = this.createMarkedInstance();
 
     // Convert markdown to HTML using custom renderer
-    const rawHtml = markedInstance.parse(markdown);
+    const rawHtml = markedInstance.parse(preprocessedMarkdown);
 
     // Ensure XHTML compliance
     const html = this.ensureXhtmlCompliance(rawHtml as string);

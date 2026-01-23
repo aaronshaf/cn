@@ -367,20 +367,14 @@ describe('ConfluenceClient - Push Operations', () => {
     test('moves a page to a folder successfully', async () => {
       server.use(
         http.put('*/wiki/rest/api/content/page-123/move/append/folder-456', () => {
-          return HttpResponse.json({
-            id: 'page-123',
-            type: 'page',
-            status: 'current',
-            title: 'Moved Page',
-          });
+          // Response body varies and is not validated - just need 200 OK
+          return HttpResponse.json({});
         }),
       );
 
       const client = new ConfluenceClient(testConfig);
-      const result = await client.movePage('page-123', 'folder-456', 'append');
-
-      expect(result.id).toBe('page-123');
-      expect(result.status).toBe('current');
+      // movePage returns void - just verify it doesn't throw
+      await client.movePage('page-123', 'folder-456', 'append');
     });
 
     test('throws on 404 when page not found', async () => {

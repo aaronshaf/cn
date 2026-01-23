@@ -7,6 +7,7 @@ import { ConfluenceClient, type CreatePageRequest, type UpdatePageRequest } from
 import { EXIT_CODES, PageNotFoundError } from '../../lib/errors.js';
 import { sortByDependencies } from '../../lib/dependency-sorter.js';
 import { detectPushCandidates, type PushCandidate } from '../../lib/file-scanner.js';
+import { checkDuplicatesBeforePush, displayVersionConflictGuidance } from './duplicate-check.js';
 import { handlePushError, PushError } from './push-errors.js';
 import {
   buildPageLookupMapFromCache,
@@ -48,7 +49,6 @@ interface PushResult {
 }
 
 // Confluence Cloud has a ~65k character limit for page content in Storage Format
-// This is an approximate limit - the actual limit depends on the complexity of the HTML
 // Reference: https://confluence.atlassian.com/doc/confluence-cloud-document-and-restriction-limits-938777919.html
 const MAX_PAGE_SIZE = 65000;
 
@@ -189,6 +189,12 @@ async function pushBatch(
 ): Promise<void> {
   console.log(chalk.gray('Scanning for changes...'));
   console.log('');
+
+  // Check for duplicate page_ids before proceeding (ADR-0024)
+  const shouldContinue = await checkDuplicatesBeforePush(directory);
+  if (!shouldContinue) {
+    return;
+  }
 
   const candidates = detectPushCandidates(directory);
 
@@ -522,10 +528,9 @@ async function updateExistingPage(
       console.error(chalk.red(`  Local version:  ${localVersion}`));
       console.error(chalk.red(`  Remote version: ${remoteVersion}`));
       console.error('');
-      console.log(chalk.yellow('The page has been modified on Confluence since your last pull.'));
-      console.log(chalk.gray('Options:'));
-      console.log(chalk.gray(`  - Run "cn pull --page ${relativePath}" to get the latest version`));
-      console.log(chalk.gray(`  - Run "cn push ${relativePath} --force" to overwrite remote changes`));
+
+      // Check for duplicates - this often explains version conflicts after page moves
+      displayVersionConflictGuidance(directory, relativePath, remoteVersion);
       throw new PushError('Version conflict', EXIT_CODES.VERSION_CONFLICT);
     }
 

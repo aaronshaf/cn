@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXIT_CODES } from '../lib/errors.js';
 import { cloneCommand } from './commands/clone.js';
+import { doctorCommand } from './commands/doctor.js';
 import { openCommand } from './commands/open.js';
 import { pullCommand } from './commands/pull.js';
 import { pushCommand } from './commands/push.js';
@@ -216,6 +217,31 @@ ${chalk.yellow('Examples:')}
 `);
 }
 
+function showDoctorHelp(): void {
+  console.log(`
+${chalk.bold('cn doctor - Health check for synced spaces')}
+
+${chalk.yellow('Usage:')}
+  cn doctor [options]
+
+${chalk.yellow('Description:')}
+  Scans the current directory for common issues:
+  - Duplicate page_ids (same page in multiple files)
+  - Orphaned files (local files without Confluence pages)
+  - Version mismatches
+
+${chalk.yellow('Options:')}
+  --fix                     Auto-fix issues (delete stale files)
+  --xml                     Output in XML format for LLM parsing
+  --help                    Show this help message
+
+${chalk.yellow('Examples:')}
+  cn doctor                 Run health check interactively
+  cn doctor --fix           Auto-fix all detected issues
+  cn doctor --xml           Output results in XML format
+`);
+}
+
 function showHelp(): void {
   console.log(`
 ${chalk.bold('cn - Confluence CLI')}
@@ -230,6 +256,7 @@ ${chalk.yellow('Commands:')}
   cn status                 Check connection and sync status
   cn tree                   Display page hierarchy
   cn open                   Open page in browser
+  cn doctor                 Health check for sync issues
 
 ${chalk.yellow('Global Options:')}
   --help, -h                Show help message
@@ -403,6 +430,17 @@ async function main(): Promise<void> {
         await openCommand({ page, spaceKey });
         break;
       }
+
+      case 'doctor':
+        if (args.includes('--help')) {
+          showDoctorHelp();
+          process.exit(EXIT_CODES.SUCCESS);
+        }
+        await doctorCommand({
+          fix: args.includes('--fix'),
+          xml: args.includes('--xml'),
+        });
+        break;
 
       default:
         console.error(`Unknown command: ${command}`);

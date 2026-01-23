@@ -116,12 +116,23 @@ describe('HtmlConverter', () => {
     expect(warnings.some((w) => w.includes('local-image.png'))).toBe(true);
   });
 
-  test('warns about @mentions', () => {
+  test('strips @ prefix from mentions', () => {
     const converter = new HtmlConverter();
-    const { warnings } = converter.convert('Contact @user123 for help.');
+    const { html, warnings } = converter.convert('Contact @user123 for help.');
 
-    expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings.some((w) => w.includes('mentions'))).toBe(true);
+    // @ should be stripped, leaving just the username
+    expect(html).toContain('user123');
+    expect(html).not.toContain('@user123');
+    // No warning since we handle it by stripping
+    expect(warnings.some((w) => w.includes('mentions'))).toBe(false);
+  });
+
+  test('does not strip @ from email addresses', () => {
+    const converter = new HtmlConverter();
+    const { html } = converter.convert('Email us at support@example.com for help.');
+
+    // Email addresses should be preserved
+    expect(html).toContain('support@example.com');
   });
 
   test('warns about task lists', () => {

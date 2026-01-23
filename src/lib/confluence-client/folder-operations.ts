@@ -12,13 +12,7 @@ import {
   PageNotFoundError,
   RateLimitError,
 } from '../errors.js';
-import {
-  FolderSchema,
-  MovePageResponseSchema,
-  type CreateFolderRequest,
-  type Folder,
-  type MovePageResponse,
-} from './types.js';
+import { FolderSchema, type CreateFolderRequest, type Folder } from './types.js';
 
 /**
  * Retry configuration for rate limiting
@@ -127,6 +121,7 @@ export function createFolderEffect(
 /**
  * Move a page to a new parent (Effect version)
  * Uses v1 API: PUT /wiki/rest/api/content/{id}/move/{position}/{targetId}
+ * Returns void since response structure varies and is not needed by callers
  */
 export function movePageEffect(
   baseUrl: string,
@@ -134,7 +129,7 @@ export function movePageEffect(
   pageId: string,
   targetId: string,
   position: 'append' | 'prepend' = 'append',
-): Effect.Effect<MovePageResponse, ApiError | AuthError | NetworkError | RateLimitError | PageNotFoundError> {
+): Effect.Effect<void, ApiError | AuthError | NetworkError | RateLimitError | PageNotFoundError> {
   const url = `${baseUrl}/wiki/rest/api/content/${pageId}/move/${position}/${targetId}`;
 
   const makeRequest = Effect.tryPromise({
@@ -155,8 +150,7 @@ export function movePageEffect(
         const errorText = await response.text();
         throw new ApiError(`API request failed: ${response.status} ${errorText}`, response.status);
       }
-
-      return response.json();
+      // Response body not validated - structure varies when moving to folders vs pages
     },
     catch: (error) => {
       if (
@@ -171,13 +165,5 @@ export function movePageEffect(
     },
   });
 
-  return pipe(
-    makeRequest,
-    Effect.flatMap((data) =>
-      Schema.decodeUnknown(MovePageResponseSchema)(data).pipe(
-        Effect.mapError((e) => new ApiError(`Invalid response: ${e}`, 500)),
-      ),
-    ),
-    Effect.retry(rateLimitRetrySchedule),
-  );
+  return pipe(makeRequest, Effect.retry(rateLimitRetrySchedule));
 }

@@ -1,7 +1,16 @@
+import { confirm } from '@inquirer/prompts';
 import chalk from 'chalk';
+import { unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { ConfigManager } from '../../lib/config.js';
 import { EXIT_CODES } from '../../lib/errors.js';
 import { getFormatter } from '../../lib/formatters.js';
+import {
+  findBestDuplicate,
+  findDuplicatePageIds,
+  findStaleDuplicates,
+  scanFilesForHealthCheck,
+} from '../../lib/health-check.js';
 import { readSpaceConfig, hasSpaceConfig } from '../../lib/space-config.js';
 import { SyncEngine } from '../../lib/sync/index.js';
 import { createProgressReporter } from '../utils/progress-reporter.js';
@@ -65,6 +74,49 @@ export async function pullCommand(options: PullCommandOptions): Promise<void> {
   const spaceConfig = readSpaceConfig(directory);
   if (spaceConfig) {
     console.log(chalk.bold(`Pulling space: ${spaceConfig.spaceName} (${spaceConfig.spaceKey})`));
+  }
+
+  // Check for duplicate page_ids before proceeding
+  const allFiles = scanFilesForHealthCheck(directory);
+  const duplicates = findDuplicatePageIds(allFiles);
+
+  if (duplicates.length > 0) {
+    console.log('');
+    console.log(chalk.red('Duplicate page_ids detected:'));
+    for (const dup of duplicates) {
+      const best = findBestDuplicate(dup.files);
+      console.log(chalk.yellow(`\n  page_id: ${dup.pageId}`));
+      for (const file of dup.files) {
+        const isBest = file.path === best.path;
+        const marker = isBest ? chalk.green(' (keep)') : chalk.red(' (stale)');
+        const version = file.version ? `v${file.version}` : 'v?';
+        console.log(`    ${isBest ? chalk.green('*') : chalk.red('x')} ${file.path}${marker} - ${version}`);
+      }
+    }
+    console.log('');
+
+    // Offer to auto-fix
+    const shouldFix = await confirm({
+      message: 'Delete stale files before pulling?',
+      default: true,
+    });
+
+    if (shouldFix) {
+      for (const dup of duplicates) {
+        const stale = findStaleDuplicates(dup);
+        for (const file of stale) {
+          try {
+            unlinkSync(join(directory, file.path));
+            console.log(chalk.green(`  Deleted: ${file.path}`));
+          } catch (error) {
+            console.log(
+              chalk.red(`  Failed to delete ${file.path}: ${error instanceof Error ? error.message : 'Unknown error'}`),
+            );
+          }
+        }
+      }
+      console.log('');
+    }
   }
 
   // Cancellation signal - shared between handler and sync engine

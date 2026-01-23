@@ -103,13 +103,9 @@ export const handlers = [
   }),
 
   // Confluence move page mock (v1 API)
-  http.put('*/wiki/rest/api/content/:pageId/move/:position/:targetId', ({ params }) => {
-    return HttpResponse.json({
-      id: params.pageId as string,
-      type: 'page',
-      status: 'current',
-      title: 'Moved Page',
-    });
+  // Response body varies and is not validated by the client
+  http.put('*/wiki/rest/api/content/:pageId/move/:position/:targetId', () => {
+    return HttpResponse.json({});
   }),
 
   // Confluence user mock (v1 API - v2 doesn't have user endpoint)

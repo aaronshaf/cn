@@ -332,21 +332,15 @@ describe('ConfluenceClient', () => {
   describe('movePage', () => {
     test('moves a page successfully', async () => {
       server.use(
-        http.put('*/wiki/rest/api/content/:pageId/move/:position/:targetId', ({ params }) => {
-          return HttpResponse.json({
-            id: params.pageId,
-            type: 'page',
-            status: 'current',
-            title: 'Moved Page',
-          });
+        http.put('*/wiki/rest/api/content/:pageId/move/:position/:targetId', () => {
+          // Response body varies and is not validated - just need 200 OK
+          return HttpResponse.json({});
         }),
       );
 
       const client = new ConfluenceClient(testConfig);
-      const result = await client.movePage('page-123', 'folder-456', 'append');
-
-      expect(result.id).toBe('page-123');
-      expect(result.status).toBe('current');
+      // movePage returns void - just verify it doesn't throw
+      await client.movePage('page-123', 'folder-456', 'append');
     });
 
     test('handles 404 when page not found', async () => {
