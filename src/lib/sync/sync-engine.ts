@@ -27,6 +27,8 @@ import {
   type SpaceConfigWithState,
 } from '../space-config.js';
 import { assertPathWithinDirectory, generateFolderPath, wouldGenerateReservedFilename } from './folder-path.js';
+import { cleanupOldFiles } from './cleanup.js';
+import { resolveLinksSecondPass } from './link-resolution-pass.js';
 import { syncSpecificPages } from './sync-specific.js';
 import type { SyncChange, SyncDiff, SyncOptions, SyncResult } from './types.js';
 
@@ -646,35 +648,23 @@ export class SyncEngine {
       }
 
       // For force sync: clean up old files that weren't re-downloaded
-      // This happens after all pages are successfully processed
-      // Per ADR-0024: previouslyTrackedPages is Record<string, string> (pageId -> localPath)
       if (options.force && !result.cancelled && Object.keys(previouslyTrackedPages).length > 0) {
-        const newTrackedPaths = new Set(Object.values(config.pages));
-        for (const [pageId, localPath] of Object.entries(previouslyTrackedPages)) {
-          // Skip if this path was re-used by a new page
-          if (newTrackedPaths.has(localPath)) continue;
-          // Skip if page was re-downloaded (exists in new config)
-          if (config.pages[pageId]) continue;
+        const cleanupWarnings = cleanupOldFiles(directory, previouslyTrackedPages, config.pages);
+        result.warnings.push(...cleanupWarnings);
+      }
 
-          try {
-            assertPathWithinDirectory(directory, localPath);
-            const fullPath = join(directory, localPath);
-            if (existsSync(fullPath)) {
-              unlinkSync(fullPath);
-              // Clean up empty parent directories
-              let parentDir = dirname(fullPath);
-              while (parentDir !== directory) {
-                if (existsSync(parentDir) && readdirSync(parentDir).length === 0) {
-                  rmSync(parentDir, { recursive: true });
-                  parentDir = dirname(parentDir);
-                } else {
-                  break;
-                }
-              }
-            }
-          } catch (err) {
-            result.warnings.push(`Failed to clean up old file ${localPath}: ${err}`);
-          }
+      // Second pass: resolve links that couldn't be resolved in first pass
+      // Per ADR-0022: Links may fail in first pass if target pages haven't been pulled yet
+      // Only run if pages were added or modified and not cancelled
+      if (!result.cancelled && (diff.added.length > 0 || diff.modified.length > 0)) {
+        const linkResolution = resolveLinksSecondPass(directory, config);
+        result.warnings.push(...linkResolution.warnings);
+
+        // Add info message about resolved links (shown as a "warning" for visibility)
+        if (linkResolution.filesUpdated > 0) {
+          result.warnings.push(
+            `Second pass: Resolved ${linkResolution.linksResolved} link${linkResolution.linksResolved !== 1 ? 's' : ''} in ${linkResolution.filesUpdated} file${linkResolution.filesUpdated !== 1 ? 's' : ''}`,
+          );
         }
       }
 
