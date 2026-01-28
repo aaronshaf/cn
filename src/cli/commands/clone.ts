@@ -2,18 +2,19 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ConfigManager } from '../../lib/config.js';
+import { ConfigManager, type Config } from '../../lib/config.js';
 import { EXIT_CODES } from '../../lib/errors.js';
 import { SyncEngine } from '../../lib/sync/index.js';
 import { createProgressReporter } from '../utils/progress-reporter.js';
 
+const SEPARATOR = '='.repeat(60);
+
 export interface CloneCommandOptions {
-  spaceKey: string;
-  directory?: string;
+  spaceKeys: string[];
 }
 
 /**
- * Clone command - clones a Confluence space to a new local directory
+ * Clone command - clones one or more Confluence spaces to new local directories
  */
 export async function cloneCommand(options: CloneCommandOptions): Promise<void> {
   const configManager = new ConfigManager();
@@ -24,6 +25,72 @@ export async function cloneCommand(options: CloneCommandOptions): Promise<void> 
     process.exit(EXIT_CODES.CONFIG_ERROR);
   }
 
+  // Check for duplicate space keys
+  const uniqueKeys = new Set(options.spaceKeys);
+  if (uniqueKeys.size !== options.spaceKeys.length) {
+    const duplicates = options.spaceKeys.filter((key, index) => options.spaceKeys.indexOf(key) !== index);
+    console.error(chalk.red('Duplicate space keys detected.'));
+    console.log(chalk.gray(`Duplicates: ${[...new Set(duplicates)].join(', ')}`));
+    process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+  }
+
+  const results: Array<{ spaceKey: string; status: 'success' | 'error'; error?: string }> = [];
+
+  // Clone each space sequentially
+  for (let i = 0; i < options.spaceKeys.length; i++) {
+    const spaceKey = options.spaceKeys[i];
+    const isMultiSpace = options.spaceKeys.length > 1;
+
+    if (isMultiSpace) {
+      console.log(chalk.blue(`\n${SEPARATOR}`));
+      console.log(chalk.blue(`Cloning ${i + 1}/${options.spaceKeys.length}: ${chalk.bold(spaceKey)}`));
+      console.log(chalk.blue(SEPARATOR));
+    }
+
+    try {
+      await cloneSingleSpace({ spaceKey, directory: spaceKey }, config);
+      results.push({ spaceKey, status: 'success' });
+    } catch (error) {
+      results.push({
+        spaceKey,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  // Check for failures
+  const successes = results.filter((r) => r.status === 'success');
+  const failures = results.filter((r) => r.status === 'error');
+
+  // Display summary if multiple spaces were cloned
+  if (options.spaceKeys.length > 1) {
+    console.log(chalk.blue(`\n${SEPARATOR}`));
+    console.log(chalk.bold('Clone Summary'));
+    console.log(chalk.blue(SEPARATOR));
+
+    if (successes.length > 0) {
+      console.log(chalk.green(`✓ Successfully cloned: ${successes.map((r) => r.spaceKey).join(', ')}`));
+    }
+
+    if (failures.length > 0) {
+      console.log(chalk.red(`✗ Failed to clone: ${failures.map((r) => r.spaceKey).join(', ')}`));
+      for (const failure of failures) {
+        console.log(chalk.red(`  ${failure.spaceKey}: ${failure.error}`));
+      }
+    }
+  }
+
+  // Exit with error if any failures occurred
+  if (failures.length > 0) {
+    process.exit(EXIT_CODES.GENERAL_ERROR);
+  }
+}
+
+/**
+ * Clone a single space - extracted from original cloneCommand
+ */
+async function cloneSingleSpace(options: { spaceKey: string; directory?: string }, config: Config): Promise<void> {
   const syncEngine = new SyncEngine(config);
 
   // Determine target directory
@@ -32,8 +99,7 @@ export async function cloneCommand(options: CloneCommandOptions): Promise<void> 
 
   // Check if directory already exists
   if (existsSync(fullPath)) {
-    console.error(chalk.red(`Directory "${targetDir}" already exists.`));
-    process.exit(EXIT_CODES.GENERAL_ERROR);
+    throw new Error(`Directory "${targetDir}" already exists.`);
   }
 
   const spinner = ora({
@@ -114,12 +180,9 @@ export async function cloneCommand(options: CloneCommandOptions): Promise<void> 
     }
 
     if (error instanceof Error && error.message.includes('not found')) {
-      console.error(chalk.red(`\nSpace "${options.spaceKey}" not found.`));
-      console.log(chalk.gray('Check the space key and try again.'));
-      process.exit(EXIT_CODES.SPACE_NOT_FOUND);
+      throw new Error(`Space "${options.spaceKey}" not found. Check the space key and try again.`);
     }
 
-    console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
-    process.exit(EXIT_CODES.GENERAL_ERROR);
+    throw error;
   }
 }

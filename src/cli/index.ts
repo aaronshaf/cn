@@ -45,26 +45,26 @@ ${chalk.yellow('Examples:')}
 
 function showCloneHelp(): void {
   console.log(`
-${chalk.bold('cn clone - Clone a Confluence space to a new folder')}
+${chalk.bold('cn clone - Clone one or more Confluence spaces to new folders')}
 
 ${chalk.yellow('Usage:')}
-  cn clone <SPACE_KEY> [directory]
+  cn clone <SPACE_KEY> [SPACE_KEY...]
 
 ${chalk.yellow('Description:')}
-  Creates a new directory and initializes it for a Confluence space.
+  Creates new directories and initializes them for Confluence spaces.
   Similar to "git clone" - sets up everything needed to pull pages.
+  Each space is cloned into a directory named after its space key.
 
 ${chalk.yellow('Arguments:')}
-  SPACE_KEY                 The Confluence space key (required)
-  directory                 Target directory name (defaults to space key)
+  SPACE_KEY                 One or more Confluence space keys (required)
 
 ${chalk.yellow('Options:')}
   --help                    Show this help message
 
 ${chalk.yellow('Examples:')}
-  cn clone DOCS             Clone into ./DOCS
-  cn clone DOCS my-docs     Clone into ./my-docs
-  cn clone ENG engineering  Clone ENG space into ./engineering
+  cn clone DOCS             Clone DOCS space to ./DOCS/
+  cn clone ABC DEF GHI      Clone multiple spaces to ./ABC/, ./DEF/, ./GHI/
+  cn clone ENG PROD TEST    Clone three spaces sequentially
 `);
 }
 
@@ -320,19 +320,15 @@ async function main(): Promise<void> {
           process.exit(EXIT_CODES.SUCCESS);
         }
 
-        // Get space key (first non-flag argument after 'clone')
-        const spaceKey = subArgs.find((arg) => !arg.startsWith('--'));
-        if (!spaceKey) {
-          console.error(chalk.red('Space key is required.'));
-          console.log(chalk.gray('Usage: cn clone <SPACE_KEY> [directory]'));
+        // Get space keys (all non-flag arguments after 'clone')
+        const spaceKeys = subArgs.filter((arg) => !arg.startsWith('--'));
+        if (spaceKeys.length === 0) {
+          console.error(chalk.red('At least one space key is required.'));
+          console.log(chalk.gray('Usage: cn clone <SPACE_KEY> [SPACE_KEY...]'));
           process.exit(EXIT_CODES.INVALID_ARGUMENTS);
         }
 
-        // Get optional directory (second non-flag argument)
-        const nonFlagArgs = subArgs.filter((arg) => !arg.startsWith('--'));
-        const directory = nonFlagArgs[1];
-
-        await cloneCommand({ spaceKey, directory });
+        await cloneCommand({ spaceKeys });
         break;
       }
 
